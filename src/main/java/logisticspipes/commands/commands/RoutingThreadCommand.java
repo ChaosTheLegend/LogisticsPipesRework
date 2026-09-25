@@ -4,6 +4,7 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.util.ChatComponentText;
 
 import logisticspipes.commands.abstracts.ICommandHandler;
+import logisticspipes.routing.RouterStats;
 import logisticspipes.ticks.RoutingTableUpdateThread;
 
 public class RoutingThreadCommand implements ICommandHandler {
@@ -30,5 +31,8 @@ public class RoutingThreadCommand implements ICommandHandler {
         sender.addChatMessage(
                 new ChatComponentText(
                         "RoutingTableUpdateThread: Average: " + RoutingTableUpdateThread.getAverage() + "ns"));
+        for (String line : RouterStats.describe()) {
+            sender.addChatMessage(new ChatComponentText(line));
+        }
     }
 }

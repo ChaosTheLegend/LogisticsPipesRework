@@ -424,6 +424,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public List<ExitRoute> getIRoutersByCost() {
+        RouterStats.networkViewLookups.increment();
         ensureRouteTableIsUpToDate(true);
         return _routeCosts;
     }
@@ -768,6 +769,8 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
         if (ServerRouter._lastLSAVersion[simpleID] >= version_to_update_to && !debug.independent()) {
             return; // this update is already done.
         }
+        final long statsStart = System.nanoTime();
+        int statsPolled = 0;
 
         // Dijkstra!
 
@@ -858,6 +861,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
         // release.
         ExitRoute lowestCostNode;
         while ((lowestCostNode = candidatesCost.poll()) != null) {
+            statsPolled++;
             if (!lowestCostNode.hasActivePipe()) {
                 continue;
             }
@@ -1084,6 +1088,9 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
         if (getCachedPipe() != null) {
             getCachedPipe().spawnParticle(Particles.LightGreenParticle, 5);
         }
+        if (!debug.isDebug()) { // the step debugger pauses mid-run, its timings are meaningless
+            RouterStats.recordTable(System.nanoTime() - statsStart, statsPolled);
+        }
 
         debug.done();
     }
@@ -1151,7 +1158,9 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public boolean checkAdjacentUpdate() {
+        long statsStart = System.nanoTime();
         boolean blockNeedsUpdate = recheckAdjacent();
+        RouterStats.recordAdjacencyCheck(System.nanoTime() - statsStart, blockNeedsUpdate);
         if (!blockNeedsUpdate) {
             return false;
         }
@@ -1195,6 +1204,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public void flagForRoutingUpdate() {
+        RouterStats.routersFlagged.increment();
         _LSAVersion++;
         // if(LogisticsPipes.DEBUG)
         // System.out.println("[LogisticsPipes] flag for routing update to "+_LSAVersion+" for Node" + simpleID);
@@ -1216,6 +1226,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
     }
 
     private void updateLsa() {
+        long statsStart = System.nanoTime();
         // now increment LSA version in the network
         BitSet visited = new BitSet(ServerRouter.getBiggestSimpleID());
         for (IRouter r : _adjacentRouter_Old.keySet()) {
@@ -1223,6 +1234,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
         }
         _adjacentRouter_Old = new HashMap<>();
         act(visited, new flagForLSAUpdate());
+        RouterStats.recordLsaFlood(System.nanoTime() - statsStart);
     }
 
     @Override
@@ -1292,6 +1304,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public ExitRoute getExitFor(int id, boolean active, ItemIdentifier type) {
+        RouterStats.pairLookups.increment();
         ensureRouteTableIsUpToDate(true);
         if (getRouteTable().size() <= id || getRouteTable().get(id) == null) {
             return null;
@@ -1318,6 +1331,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public boolean hasRoute(int id, boolean active, ItemIdentifier type) {
+        RouterStats.pairLookups.increment();
         if (!SimpleServiceLocator.routerManager.isRouterUnsafe(id, false)) {
             return false;
         }
@@ -1529,6 +1543,7 @@ public class ServerRouter implements IRouter, Comparable<ServerRouter> {
 
     @Override
     public List<ExitRoute> getDistanceTo(IRouter r) {
+        RouterStats.pairLookups.increment();
         ensureRouteTableIsUpToDate(true);
         int id = r.getSimpleID();
         if (_routeTable.size() <= id) {
