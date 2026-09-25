@@ -18,7 +18,7 @@ replace the old, broken one. Requirements as given:
 ## Root causes found (before writing any code)
 
 `ChassisGui.java` had been deleted from the working tree because it didn't work. Two root bugs, found via
-research agents that traced ModularUI2 semantics (`.claude/modularUI-docs/`) and the actual click-dispatch
+research agents that traced ModularUI2 semantics (`modularUI-docs`) and the actual click-dispatch
 chain:
 
 1. It built each module's editor from a **throwaway** `LogisticsModule` instance
@@ -35,7 +35,7 @@ want the full design rationale; the summary below covers what's needed to contin
 
 ## What was implemented (all uncommitted, `git status` below)
 
-### 1. `src/main/java/logisticspipes/api/IMUICompatibleModule.java`
+### 1. `../src/main/java/logisticspipes/api/IMUICompatibleModule.java`
 Added a prefix-aware default method:
 ```java
 default LogisticsModularUI getPipeGui(String prefix) {
@@ -60,7 +60,7 @@ would collide on identical sync-handler keys. Fixed by adding a `(module, prefix
 (These 8 are the complete set implementing `IMUICompatibleModule`. `ModuleCrafter` does not implement it —
 `ChassisGui` special-cases it with a "use Pattern Crafting Pipes instead" message.)
 
-### 3. `src/main/java/logisticspipes/pipes/PipeLogisticsChassi.java`
+### 3. `../src/main/java/logisticspipes/pipes/PipeLogisticsChassi.java`
 Now `implements IMUICompatiblePipeV2` with:
 ```java
 @Override
@@ -72,7 +72,7 @@ public LogisticsModularUI getPipeGui() {
 to the legacy path — no other wiring was needed. The old `ChassiGuiProvider`/`GuiChassiPipe` path is now dead
 code, left in place.
 
-### 4. `src/main/java/logisticspipes/gui/modularUI/ChassisGui.java` (new file, recreates the deleted one)
+### 4. `../src/main/java/logisticspipes/gui/modularUI/ChassisGui.java` (new file, recreates the deleted one)
 - Builds each slot's editor from the **live installed module** (`pipe.getModules().getSubModule(slot)`), not
   a throwaway instance.
 - Each slot's module UI gets a unique `"chassis_slot_" + slot` prefix via `getPipeGui(prefix)`.
@@ -86,7 +86,7 @@ code, left in place.
 ## Bug found during manual testing, and the fix (already applied)
 
 Manual test in `runClient` surfaced a crash. Crash reports were found in
-`run/client/crash-reports/crash-2026-08-05_17.24.57-server.txt` (and a separate, unrelated one at
+`../run/client/crash-reports/crash-2026-08-05_17.24.57-server.txt` (and a separate, unrelated one at
 `crash-2026-08-05_17.23.09-client.txt`, see "Known remaining issue" below) which pinned the exact cause:
 
 ```

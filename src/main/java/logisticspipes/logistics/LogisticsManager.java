@@ -30,7 +30,8 @@ import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.routing.ExitRoute;
 import logisticspipes.routing.IRouter;
 import logisticspipes.routing.PipeRoutingConnectionType;
-import logisticspipes.routing.ServerRouter;
+import logisticspipes.routing.astar.InterestRegistry;
+import logisticspipes.routing.astar.RouterIds;
 import logisticspipes.utils.SinkReply;
 import logisticspipes.utils.SinkReply.FixedPriority;
 import logisticspipes.utils.item.ItemIdentifier;
@@ -54,7 +55,7 @@ public class LogisticsManager implements ILogisticsManager {
         if (sourceRouter == null) {
             return null;
         }
-        BitSet routersIndex = ServerRouter.getRoutersInterestedIn(stack);
+        BitSet routersIndex = InterestRegistry.getRoutersInterestedIn(stack);
         List<ExitRoute> validDestinations = new ArrayList<>(); // get the routing table
         for (int i = routersIndex.nextSetBit(0); i >= 0; i = routersIndex.nextSetBit(i + 1)) {
             IRouter r = SimpleServiceLocator.routerManager.getRouterUnsafe(i, false);
@@ -246,7 +247,7 @@ public class LogisticsManager implements ILogisticsManager {
         // Wipe current destination
         item.clearDestination();
 
-        BitSet routersIndex = ServerRouter.getRoutersInterestedIn(item.getItemIdentifierStack().getItem());
+        BitSet routersIndex = InterestRegistry.getRoutersInterestedIn(item.getItemIdentifierStack().getItem());
         List<ExitRoute> validDestinations = new ArrayList<>(); // get the routing table
         for (int i = routersIndex.nextSetBit(0); i >= 0; i = routersIndex.nextSetBit(i + 1)) {
             IRouter r = SimpleServiceLocator.routerManager.getRouterUnsafe(i, false);
@@ -337,11 +338,11 @@ public class LogisticsManager implements ILogisticsManager {
     @Override
     public HashMap<ItemIdentifier, Integer> getAvailableItems(List<ExitRoute> validDestinations) {
         // TODO: Replace this entire function wiht a fetch from the pre-built arrays (path incoming later)
-        List<Map<ItemIdentifier, Integer>> items = new ArrayList<>(ServerRouter.getBiggestSimpleID());
-        for (int i = 0; i < ServerRouter.getBiggestSimpleID(); i++) {
+        List<Map<ItemIdentifier, Integer>> items = new ArrayList<>(RouterIds.getBiggestSimpleID());
+        for (int i = 0; i < RouterIds.getBiggestSimpleID(); i++) {
             items.add(new HashMap<>());
         }
-        BitSet used = new BitSet(ServerRouter.getBiggestSimpleID());
+        BitSet used = new BitSet(RouterIds.getBiggestSimpleID());
         outer: for (ExitRoute r : validDestinations) {
             if (r == null) {
                 continue;
@@ -378,7 +379,7 @@ public class LogisticsManager implements ILogisticsManager {
     @Override
     public LinkedList<ItemIdentifier> getCraftableItems(List<ExitRoute> validDestinations) {
         LinkedList<ItemIdentifier> craftableItems = new LinkedList<>();
-        BitSet used = new BitSet(ServerRouter.getBiggestSimpleID());
+        BitSet used = new BitSet(RouterIds.getBiggestSimpleID());
         outer: for (ExitRoute r : validDestinations) {
             if (r == null) {
                 continue;
@@ -419,11 +420,11 @@ public class LogisticsManager implements ILogisticsManager {
     @Override
     public int getAmountFor(ItemIdentifier itemType, List<ExitRoute> validDestinations) {
         // TODO: Replace this entire function wiht a fetch from the pre-built arrays (path incoming later)
-        List<Map<ItemIdentifier, Integer>> items = new ArrayList<>(ServerRouter.getBiggestSimpleID());
-        for (int i = 0; i < ServerRouter.getBiggestSimpleID(); i++) {
+        List<Map<ItemIdentifier, Integer>> items = new ArrayList<>(RouterIds.getBiggestSimpleID());
+        for (int i = 0; i < RouterIds.getBiggestSimpleID(); i++) {
             items.add(new HashMap<>());
         }
-        BitSet used = new BitSet(ServerRouter.getBiggestSimpleID());
+        BitSet used = new BitSet(RouterIds.getBiggestSimpleID());
         outer: for (ExitRoute r : validDestinations) {
             if (r == null) {
                 continue;

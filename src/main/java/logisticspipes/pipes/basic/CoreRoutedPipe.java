@@ -101,6 +101,10 @@ import logisticspipes.routing.ExitRoute;
 import logisticspipes.routing.IRouter;
 import logisticspipes.routing.ItemRoutingInformation;
 import logisticspipes.routing.ServerRouter;
+import logisticspipes.routing.astar.InterestRegistry;
+import logisticspipes.routing.astar.JunctionRouter;
+import logisticspipes.routing.astar.LPJunctionNetwork;
+import logisticspipes.routing.astar.RouterIds;
 import logisticspipes.routing.order.IOrderInfoProvider;
 import logisticspipes.routing.order.LogisticsItemOrderManager;
 import logisticspipes.routing.order.LogisticsOrderManager;
@@ -555,12 +559,12 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
     private void doDebugStuff(EntityPlayer entityplayer) {
         // entityplayer.worldObj.setWorldTime(4951);
         IRouter r = getRouter();
-        if (!(r instanceof ServerRouter)) {
+        if (!(r instanceof ServerRouter) && !(r instanceof JunctionRouter)) {
             return;
         }
         System.out.println("***");
         System.out.println("---------Interests---------------");
-        for (Entry<ItemIdentifier, Set<IRouter>> i : ServerRouter.getInterestedInSpecifics().entrySet()) {
+        for (Entry<ItemIdentifier, Set<IRouter>> i : InterestRegistry.getInterestedInSpecifics().entrySet()) {
             System.out.print(i.getKey().getFriendlyName() + ":");
             for (IRouter j : i.getValue()) {
                 System.out.print(j.getSimpleID() + ",");
@@ -569,16 +573,19 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
         }
 
         System.out.print("ALL ITEMS:");
-        for (IRouter j : ServerRouter.getInterestedInGeneral()) {
+        for (IRouter j : InterestRegistry.getInterestedInGeneral()) {
             System.out.print(j.getSimpleID() + ",");
         }
         System.out.println();
 
-        ServerRouter sr = (ServerRouter) r;
+        Map<CoreRoutedPipe, ExitRoute> adjacentPipes = r instanceof JunctionRouter ? ((JunctionRouter) r)._adjacent
+                : ((ServerRouter) r)._adjacent;
+        boolean[] sideDisconnected = r instanceof JunctionRouter ? ((JunctionRouter) r).sideDisconnected
+                : ((ServerRouter) r).sideDisconnected;
 
         System.out.println(r);
         System.out.println("---------CONNECTED TO---------------");
-        for (CoreRoutedPipe adj : sr._adjacent.keySet()) {
+        for (CoreRoutedPipe adj : adjacentPipes.keySet()) {
             System.out.println(adj.getRouter().getSimpleID());
         }
         System.out.println();
@@ -610,7 +617,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
         System.out.println();
         System.out.println("++++++++++CONNECTIONS+++++++++++++++");
         System.out.println(Arrays.toString(ForgeDirection.VALID_DIRECTIONS));
-        System.out.println(Arrays.toString(sr.sideDisconnected));
+        System.out.println(Arrays.toString(sideDisconnected));
         System.out.println(Arrays.toString(container.pipeConnectionsBuffer));
         System.out.println();
         System.out.println("~~~~~~~~~~~~~~~POWER~~~~~~~~~~~~~~~~");
@@ -626,7 +633,14 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
         System.out.println("################END#################");
         refreshConnectionAndRender(true);
         System.out.print("");
-        sr.CreateRouteTable(Integer.MAX_VALUE);
+        if (r instanceof JunctionRouter) {
+            for (String line : LPJunctionNetwork.describe()) {
+                System.out.println(line);
+            }
+            ((JunctionRouter) r).recomputeNetworkView();
+        } else {
+            ((ServerRouter) r).CreateRouteTable(Integer.MAX_VALUE);
+        }
     }
 
     // end FromBaseRoutingLogic
@@ -1535,7 +1549,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
             }
         }
         final Object fSourceId = sourceId;
-        BitSet set = new BitSet(ServerRouter.getBiggestSimpleID());
+        BitSet set = new BitSet(RouterIds.getBiggestSimpleID());
         for (ExitRoute exit : getRouter().getIRoutersByCost()) {
             if (exit.destination != null && !set.get(exit.destination.getSimpleID())) {
                 exit.destination.queueTask(10, (pipe, router) -> pipe.handleMesssage(computerId, message, fSourceId));
@@ -1561,7 +1575,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
             }
         }
         final Object fSourceId = sourceId;
-        BitSet set = new BitSet(ServerRouter.getBiggestSimpleID());
+        BitSet set = new BitSet(RouterIds.getBiggestSimpleID());
         for (ExitRoute exit : getRouter().getIRoutersByCost()) {
             if (exit.destination != null && !set.get(exit.destination.getSimpleID())) {
                 exit.destination.queueTask(10, (pipe, router) -> pipe.handleBroadcast(message, fSourceId));
