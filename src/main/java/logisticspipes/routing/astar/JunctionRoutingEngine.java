@@ -307,6 +307,17 @@ public final class JunctionRoutingEngine {
 
     // ------------------------------------------------------------------ stats
 
+    /** Zero every statistics counter (engine and writer). Cached routes and the graph are not touched. */
+    public void resetStats() {
+        pairSearches.set(0);
+        multiSearches.set(0);
+        sweepSearches.set(0);
+        cacheHits.set(0);
+        staleServed.set(0);
+        searchNanos.set(0);
+        writer.resetStats();
+    }
+
     public long pairSearches() {
         return pairSearches.get();
     }

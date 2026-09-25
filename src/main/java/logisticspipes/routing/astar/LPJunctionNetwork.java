@@ -80,6 +80,10 @@ public final class LPJunctionNetwork {
         }
     }
 
+    public static void resetStats() {
+        ENGINE.resetStats();
+    }
+
     public static List<String> describe() {
         return ENGINE.describe();
     }

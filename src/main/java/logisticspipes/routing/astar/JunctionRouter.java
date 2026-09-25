@@ -83,6 +83,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
     private Map<IRouter, Double> _adjacentMetric = new HashMap<>();
     public List<Pair<ILogisticsPowerProvider, List<IFilter>>> _powerAdjacent = new ArrayList<>();
     public List<Pair<ISubSystemPowerProvider, List<IFilter>>> _subSystemPowerAdjacent = new ArrayList<>();
+    private boolean hadPowerData = false;
 
     public boolean[] sideDisconnected = new boolean[6];
 
@@ -490,7 +491,14 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
         JunctionGraphWriter writer = LPJunctionNetwork.writer();
         writer.setEdges(junctionId, specs);
         if (powerChanged) {
-            writer.setData(junctionId, new PowerData(_powerAdjacent, _subSystemPowerAdjacent), true);
+            // Only junctions with providers attached carry data: every pipe's power poll routes to all of them.
+            boolean hasPower = (_powerAdjacent != null && !_powerAdjacent.isEmpty())
+                    || (_subSystemPowerAdjacent != null && !_subSystemPowerAdjacent.isEmpty());
+            PowerData data = hasPower ? new PowerData(_powerAdjacent, _subSystemPowerAdjacent) : null;
+            if (data != null || hadPowerData) {
+                writer.setData(junctionId, data, data != null);
+            }
+            hadPowerData = data != null;
         }
     }
 

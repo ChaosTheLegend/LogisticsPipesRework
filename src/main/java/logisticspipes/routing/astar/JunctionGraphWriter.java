@@ -143,6 +143,18 @@ public final class JunctionGraphWriter {
         return eventCounts.clone();
     }
 
+    /** Zero the edit statistics; the graph itself is not touched. */
+    public void resetStats() {
+        writerLock.lock();
+        try {
+            detourChecks = 0;
+            fullRelabels = 0;
+            Arrays.fill(eventCounts, 0);
+        } finally {
+            writerLock.unlock();
+        }
+    }
+
     public long fullRelabels() {
         return fullRelabels;
     }
