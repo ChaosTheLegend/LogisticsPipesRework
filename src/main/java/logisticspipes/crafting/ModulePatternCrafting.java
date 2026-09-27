@@ -39,11 +39,7 @@ import logisticspipes.interfaces.routing.IRequestFluid;
 import logisticspipes.interfaces.routing.IRequestItems;
 import logisticspipes.interfaces.routing.IRequireReliableTransport;
 import logisticspipes.logistics.LogisticsManager;
-import logisticspipes.modules.abstractmodules.LogisticsGuiModule;
 import logisticspipes.modules.abstractmodules.LogisticsModule;
-import logisticspipes.network.NewGuiHandler;
-import logisticspipes.network.abstractguis.ModuleCoordinatesGuiProvider;
-import logisticspipes.network.abstractguis.ModuleInHandGuiProvider;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
@@ -79,7 +75,7 @@ import logisticspipes.utils.item.ItemIdentifierStack;
 import logisticspipes.utils.item.SimpleStackInventory;
 import logisticspipes.utils.tuples.Pair;
 
-public class ModulePatternCrafting extends LogisticsGuiModule
+public class ModulePatternCrafting extends LogisticsModule
         implements ICraftItems, ICraftFluids, IRequestFluid, IRequireReliableTransport, IStagedCraftingProvider {
 
     private static final String LOST_INGREDIENTS_TAG = "patternLostIngredients";
@@ -295,9 +291,12 @@ public class ModulePatternCrafting extends LogisticsGuiModule
         return false;
     }
 
+    /**
+     * Router interests are the crafted items, matching {@code PipeItemsPatternCraftingLogistics#getSpecificInterests}.
+     */
     @Override
     public Collection<ItemIdentifier> getSpecificInterests() {
-        return patternHandler.getIngredientItems();
+        return getCraftedItems();
     }
 
     /**
@@ -347,18 +346,23 @@ public class ModulePatternCrafting extends LogisticsGuiModule
     }
 
     @Override
+    public int getX() {
+        return pipe.getX();
+    }
+
+    @Override
+    public int getY() {
+        return pipe.getY();
+    }
+
+    @Override
+    public int getZ() {
+        return pipe.getZ();
+    }
+
+    @Override
     public Map<FluidIdentifier, Integer> getAvailableFluids() {
         return Collections.emptyMap();
-    }
-
-    @Override
-    protected ModuleCoordinatesGuiProvider getPipeGuiProvider() {
-        return NewGuiHandler.getGui(PatternCraftingPipeGuiProvider.class).setBlockingMode(getBlockingMode().ordinal());
-    }
-
-    @Override
-    protected ModuleInHandGuiProvider getInHandGuiProvider() {
-        return null;
     }
 
     @Override

@@ -6,6 +6,7 @@ import net.minecraft.entity.player.EntityPlayer;
 
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.PacketHandler;
 import logisticspipes.network.abstractpackets.ModernPacket;
 import logisticspipes.proxy.MainProxy;
@@ -27,6 +28,13 @@ public class CraftingRequestDebugRequest extends ModernPacket {
     @Override
     public void processPacket(EntityPlayer player) {
         if (player == null || !MainProxy.isServer(player.worldObj)) {
+            return;
+        }
+        // The log holds every player's requests; only operators may read or clear it.
+        if (!PacketGuards.isPrivileged(player)) {
+            MainProxy.sendPacketToPlayer(
+                    PacketHandler.getPacket(CraftingRequestDebugResponse.class).setTitle("Crafting Request Debug"),
+                    player);
             return;
         }
         if (clearInfo) CraftingRequestDebugManager.clear();

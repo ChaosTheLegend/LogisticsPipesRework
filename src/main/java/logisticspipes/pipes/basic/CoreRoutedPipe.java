@@ -1028,7 +1028,13 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
                 && SimpleServiceLocator.toolWrenchHandler.canWrench(entityplayer, getX(), getY(), getZ())) {
             if (!(entityplayer.getHeldItem().getItem() instanceof ItemLegacyWrench)
                     && this instanceof IMUICompatiblePipeV2) {
-                ((IMUICompatiblePipeV2) this).openGui(entityplayer, this);
+                if (MainProxy.isServer(entityplayer.worldObj)) {
+                    if (settings == null || settings.openGui) {
+                        ((IMUICompatiblePipeV2) this).openGui(entityplayer, this);
+                    } else {
+                        entityplayer.addChatComponentMessage(new ChatComponentTranslation("lp.chat.permissiondenied"));
+                    }
+                }
             } else if (MainProxy.isServer(entityplayer.worldObj)) {
                 if (settings == null || settings.openGui) {
                     if (getLogisticsModule() != null && getLogisticsModule() instanceof LogisticsGuiModule) {

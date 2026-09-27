@@ -378,8 +378,8 @@ public class PatternCraftingSyncHandler extends SyncHandler<PatternCraftingSyncH
     }
 
     /**
-     * Mirrors {@code PatternPipeSatelliteAssignmentPacket}: stores the target on the pattern and links the satellite so
-     * staged ingredient requests can resolve it.
+     * Stores the satellite target on the pattern input slot and links the satellite so staged ingredient requests can
+     * resolve it.
      */
     private void applySatellite(int inputSlot, int satelliteId, String satelliteUuid, boolean fluid) {
         ItemStack stack = state.getPatternStack();

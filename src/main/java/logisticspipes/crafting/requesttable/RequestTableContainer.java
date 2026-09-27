@@ -72,6 +72,10 @@ public class RequestTableContainer extends DummyContainer {
         }
     }
 
+    public RequestTablePipe getTable() {
+        return table;
+    }
+
     /**
      * Moves the client-side slots into their current adaptive positions.
      */

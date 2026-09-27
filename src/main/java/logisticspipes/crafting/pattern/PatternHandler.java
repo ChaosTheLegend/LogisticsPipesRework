@@ -2,8 +2,6 @@ package logisticspipes.crafting.pattern;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
 
 import net.minecraft.item.ItemStack;
 
@@ -47,37 +45,6 @@ public class PatternHandler {
             }
         }
         return result;
-    }
-
-    public Set<ItemIdentifier> getIngredientItems() {
-        Set<ItemIdentifier> items = new TreeSet<>();
-        for (ItemStack pattern : getConfiguredPatterns()) {
-            AbstractPattern configuredPattern = ItemPattern.fromStack(pattern);
-            for (IPatternStack ingredient : configuredPattern.getInputs()) {
-                ItemIdentifier item = PatternStackHelper.getRoutingItem(ingredient);
-                if (item != null) {
-                    items.add(item);
-                }
-            }
-        }
-        return items;
-    }
-
-    public boolean isIngredient(ItemIdentifier item) {
-        FluidIdentifier fluid = item != null && item.isFluidContainer() ? FluidIdentifier.get(item) : null;
-        if (fluid != null) {
-            return isFluidIngredient(fluid);
-        }
-        return getIngredientItems().contains(item);
-    }
-
-    boolean isFluidIngredient(FluidIdentifier fluid) {
-        for (ItemStack pattern : getConfiguredPatterns()) {
-            if (fluidIngredientAmount(pattern, fluid) > 0) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public int findPatternSlotForResult(ItemIdentifier item) {

@@ -7,10 +7,9 @@ import net.minecraft.entity.player.EntityPlayer;
 import logisticspipes.crafting.requesttable.RequestTablePipe;
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.abstractpackets.ModernPacket;
 import logisticspipes.network.abstractpackets.RequestPacket;
-import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
-import logisticspipes.proxy.MainProxy;
 
 /**
  * Applies a normal click on a network-grid entry to the request table's internal storage.
@@ -56,12 +55,11 @@ public class RequestTableNetworkInteractPacket extends RequestPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
-        LogisticsTileGenericPipe tile = MainProxy.proxy
-                .getPipeInDimensionAt(getDimension(), getPosX(), getPosY(), getPosZ(), player);
-        if (tile == null || !(tile.pipe instanceof RequestTablePipe)) {
+        RequestTablePipe table = PacketGuards.getOpenRequestTable(player);
+        if (table == null) {
             return;
         }
-        ((RequestTablePipe) tile.pipe).handleNetworkEntryInteraction(player, getStack(), fluid, mouseButton, shift);
+        table.handleNetworkEntryInteraction(player, getStack(), fluid, mouseButton, shift);
     }
 
     @Override

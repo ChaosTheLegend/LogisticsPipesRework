@@ -256,7 +256,6 @@ class PatternStagedCraftingCoordinator {
                     "removal releases staged order slot=%d remainingSets=%d",
                     order.patternSlot,
                     order.remainingSets);
-            order.retrieveSatelliteDeliveries();
             order.releaseReservations();
         }
         stagedCrafts.clear();
@@ -300,7 +299,6 @@ class PatternStagedCraftingCoordinator {
                 order.patternSlot,
                 order.remainingSets);
         cancelledSlots.add(order.patternSlot);
-        order.retrieveSatelliteDeliveries();
         order.releaseReservations();
         removeOutputOrder(order.outputOrder);
         if (order.outputOrder != null) {

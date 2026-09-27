@@ -7,10 +7,9 @@ import net.minecraft.entity.player.EntityPlayer;
 import logisticspipes.crafting.requesttable.RequestTablePipe;
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.abstractpackets.ModernPacket;
 import logisticspipes.network.abstractpackets.RequestPacket;
-import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
-import logisticspipes.proxy.MainProxy;
 import logisticspipes.request.RequestHandler;
 
 /**
@@ -39,12 +38,10 @@ public class RequestTableSubmitPacket extends RequestPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
-        LogisticsTileGenericPipe tile = MainProxy.proxy
-                .getPipeInDimensionAt(getDimension(), getPosX(), getPosY(), getPosZ(), player);
-        if (tile == null || !(tile.pipe instanceof RequestTablePipe)) {
+        RequestTablePipe table = PacketGuards.getOpenRequestTable(player);
+        if (table == null) {
             return;
         }
-        RequestTablePipe table = (RequestTablePipe) tile.pipe;
         if (fluid) {
             RequestHandler.requestFluid(player, getStack(), table, table);
         } else {

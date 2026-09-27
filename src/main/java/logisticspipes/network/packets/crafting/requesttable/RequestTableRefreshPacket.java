@@ -15,10 +15,10 @@ import net.minecraftforge.fluids.FluidStack;
 
 import logisticspipes.crafting.requesttable.RequestTableNetworkEntry;
 import logisticspipes.crafting.requesttable.RequestTablePipe;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.PacketHandler;
 import logisticspipes.network.abstractpackets.IntegerCoordinatesPacket;
 import logisticspipes.network.abstractpackets.ModernPacket;
-import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.FluidIdentifier;
@@ -42,12 +42,10 @@ public class RequestTableRefreshPacket extends IntegerCoordinatesPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
-        LogisticsTileGenericPipe tile = MainProxy.proxy
-                .getPipeInDimensionAt(getInteger(), getPosX(), getPosY(), getPosZ(), player);
-        if (tile == null || !(tile.pipe instanceof RequestTablePipe)) {
+        RequestTablePipe table = PacketGuards.getOpenRequestTable(player);
+        if (table == null) {
             return;
         }
-        RequestTablePipe table = (RequestTablePipe) tile.pipe;
         List<RequestTableNetworkEntry> entries = buildEntries(table);
         MainProxy.sendPacketToPlayer(
                 PacketHandler.getPacket(RequestTableContentPacket.class).setEntries(entries)

@@ -782,4 +782,14 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
         return new PipePatternCraftingMui(this);
     }
 
+    /**
+     * Opens the MUI for legacy wrenches too; this pipe has no legacy GUI.
+     * <p>
+     * Called by {@link CoreRoutedPipe} on the server after the security station check.
+     */
+    @Override
+    public void onWrenchClicked(EntityPlayer entityplayer) {
+        openGui(entityplayer, this);
+    }
+
 }

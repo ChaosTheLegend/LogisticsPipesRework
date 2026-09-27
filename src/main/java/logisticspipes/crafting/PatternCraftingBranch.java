@@ -126,24 +126,10 @@ public class PatternCraftingBranch {
     }
 
     /**
-     * Returns the number of live logistics orders that have been spawned from this branch.
-     * <p>
-     * Callers use this as a cursor before requesting a branch so they can inspect only the orders created by that
-     * specific request step.
+     * Returns the live logistics orders that have been spawned from this branch.
      */
-    int liveOrderCount() {
-        return liveOrders.size();
-    }
-
-    /**
-     * Returns a snapshot of live orders that were added after {@code index}.
-     */
-    List<IOrderInfoProvider> liveOrdersFrom(int index) {
-        int start = Math.max(0, index);
-        if (start >= liveOrders.size()) {
-            return Collections.emptyList();
-        }
-        return new ArrayList<>(liveOrders.subList(start, liveOrders.size()));
+    List<IOrderInfoProvider> getLiveOrders() {
+        return Collections.unmodifiableList(liveOrders);
     }
 
     /**
@@ -573,24 +559,6 @@ public class PatternCraftingBranch {
                     consumedSetsAfter,
                     originalCraftingSets);
         }
-    }
-
-    /**
-     * Copies the next {@code amount} items and consumes that amount from this branch.
-     */
-    public PatternCraftingBranch copyAndReserve(int amount) {
-        int copiedAmount = Math.min(amount, remainingAmount);
-        PatternCraftingBranch copy = copyForAmount(copiedAmount);
-        reserve(copiedAmount);
-        debugBranchEvent(
-                "BRANCH",
-                "branch copy and reserve resource=%s requested=%d copied=%d remaining=%d craftingRemaining=%d",
-                requestType,
-                amount,
-                copiedAmount,
-                remainingAmount,
-                remainingCraftingAmount);
-        return copy;
     }
 
     /**

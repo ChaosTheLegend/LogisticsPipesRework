@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity;
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.abstractpackets.CoordinatesPacket;
 import logisticspipes.network.abstractpackets.ModernPacket;
 
@@ -38,6 +39,10 @@ public class PatternCraftingTableUpdate extends CoordinatesPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
+        // Server-to-client only: the payload replaces the table inventories.
+        if (!PacketGuards.isOnClient(player)) {
+            return;
+        }
         PatternLogisticsCraftingTableTileEntity tile = getTile(
                 player.worldObj,
                 PatternLogisticsCraftingTableTileEntity.class);

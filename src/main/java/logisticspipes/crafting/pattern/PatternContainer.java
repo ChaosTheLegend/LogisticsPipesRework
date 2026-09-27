@@ -159,32 +159,6 @@ public class PatternContainer extends DummyContainer {
         }
     }
 
-    /**
-     * Reloads the dummy inventory contents from the supplied pattern after an external recipe import.
-     *
-     * @param pattern pattern data that should be mirrored into this container
-     */
-    public void reloadFromPattern(AbstractPattern pattern) {
-        if (pattern == null) {
-            pattern = ItemPattern.fromStack(null);
-        }
-        updatePatternSlotLayout(pattern);
-        boolean change = false;
-
-        for (int i = 0; i < _dummyInventory.getSizeInventory(); ++i) {
-            var oldSlot = _dummyInventory.getStackInSlot(i);
-            var newSlot = pattern.getStackInSlot(i);
-
-            if (newSlot != oldSlot) {
-                _dummyInventory.setInventorySlotContents(i, newSlot);
-                change = true;
-            }
-        }
-
-        if (change) detectAndSendChanges();
-
-    }
-
     private void moveSlot(Slot slot, int x, int y) {
         slot.xDisplayPosition = x;
         slot.yDisplayPosition = y;

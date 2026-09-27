@@ -3,9 +3,9 @@ package logisticspipes.network.packets.crafting.requesttable;
 import net.minecraft.entity.player.EntityPlayer;
 
 import logisticspipes.crafting.requesttable.RequestTablePipe;
+import logisticspipes.network.PacketGuards;
 import logisticspipes.network.abstractpackets.IntegerCoordinatesPacket;
 import logisticspipes.network.abstractpackets.ModernPacket;
-import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 
 /**
  * Sends the selected internal storage back into the network when destinations exist.
@@ -23,11 +23,10 @@ public class RequestTableSendStoragePacket extends IntegerCoordinatesPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
-        LogisticsTileGenericPipe tile = getPipe(player.worldObj);
-        if (tile == null || !(tile.pipe instanceof RequestTablePipe)) {
+        RequestTablePipe table = PacketGuards.getOpenRequestTable(player);
+        if (table == null) {
             return;
         }
-        RequestTablePipe table = (RequestTablePipe) tile.pipe;
         if (getInteger() == 1) {
             table.sendStoredFluidsToNetwork();
         } else {

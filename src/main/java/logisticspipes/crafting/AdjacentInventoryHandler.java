@@ -124,49 +124,6 @@ class AdjacentInventoryHandler {
         return result;
     }
 
-    boolean insertPatternSets(ItemStack pattern, int sets) {
-        if (sets <= 0) {
-            module.debug("adjacent insert skipped sets=%d", sets);
-            return false;
-        }
-        AdjacentTile connected = getConnected();
-        if (connected != null && connected.tile instanceof PatternLogisticsCraftingTableTileEntity
-                && !module.hasLinkedSatelliteAssignments(pattern)
-                && getFluidIngredients(module.getLocalAggregatedIngredients(pattern)).isEmpty()) {
-            boolean inserted = ((PatternLogisticsCraftingTableTileEntity) connected.tile)
-                    .insertPatternFromPatternPipe(pattern, sets);
-            module.debug("adjacent pattern-table insert pattern=%s sets=%d inserted=%s", pattern, sets, inserted);
-            return inserted;
-        }
-        for (IPatternStack ingredient : module.getLocalAggregatedIngredients(pattern)) {
-            if (ingredient instanceof PatternItemStack) {
-                ItemIdentifierStack item = ((PatternItemStack) ingredient).getItemIdentifierStack();
-                ItemIdentifierStack stack = new ItemIdentifierStack(item.getItem(), item.getStackSize() * sets);
-                int inserted = insert(pattern, stack);
-                module.debug(
-                        "adjacent insert item ingredient=%s wanted=%d inserted=%d",
-                        item.getItem(),
-                        stack.getStackSize(),
-                        inserted);
-                if (inserted != stack.getStackSize()) {
-                    return false;
-                }
-            } else if (ingredient instanceof PatternFluidStack fluid) {
-                PatternFluidStack stack = new PatternFluidStack(fluid.getFluid(), fluid.getAmount() * sets);
-                int inserted = insertFluid(stack);
-                module.debug(
-                        "adjacent insert fluid ingredient=%s wanted=%d inserted=%d",
-                        fluid.getFluid(),
-                        stack.getAmount(),
-                        inserted);
-                if (inserted != stack.getAmount()) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     boolean canInsertPatternIngredients(ItemStack pattern, List<PatternIngredientAssignment> assignments) {
         AdjacentTile connected = getConnected();
         if (connected == null || assignments == null || assignments.isEmpty()) {
