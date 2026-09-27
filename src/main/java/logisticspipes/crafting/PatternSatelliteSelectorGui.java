@@ -13,10 +13,13 @@ import org.lwjgl.input.Mouse;
 
 import com.github.bsideup.jabel.Desugar;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.utils.gui.GuiGraphics;
 import logisticspipes.utils.gui.SmallGuiButton;
 import logisticspipes.utils.gui.SubGuiScreen;
 
+@SideOnly(Side.CLIENT)
 public class PatternSatelliteSelectorGui extends SubGuiScreen {
 
     public interface SelectionHandler {

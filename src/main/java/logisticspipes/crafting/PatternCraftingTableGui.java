@@ -3,10 +3,13 @@ package logisticspipes.crafting;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.entity.player.EntityPlayer;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.utils.gui.DummyContainer;
 import logisticspipes.utils.gui.GuiGraphics;
 import logisticspipes.utils.gui.LogisticsBaseGuiScreen;
 
+@SideOnly(Side.CLIENT)
 public class PatternCraftingTableGui extends LogisticsBaseGuiScreen {
 
     private final PatternLogisticsCraftingTableTileEntity tile;

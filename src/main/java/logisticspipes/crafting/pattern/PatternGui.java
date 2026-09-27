@@ -10,6 +10,8 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.util.EnumChatFormatting;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.crafting.PatternSatelliteInfo;
 import logisticspipes.crafting.PatternSatelliteSelectorGui;
 import logisticspipes.crafting.patternStack.IPatternStack;
@@ -22,6 +24,7 @@ import logisticspipes.utils.gui.GuiGraphics;
 import logisticspipes.utils.gui.LogisticsBaseGuiScreen;
 import logisticspipes.utils.gui.SmallGuiButton;
 
+@SideOnly(Side.CLIENT)
 public class PatternGui extends LogisticsBaseGuiScreen {
 
     private final PatternInventory patternInventory;
