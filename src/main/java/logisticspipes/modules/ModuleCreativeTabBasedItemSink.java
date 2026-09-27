@@ -35,8 +35,8 @@ import logisticspipes.utils.SinkReply.FixedPriority;
 import logisticspipes.utils.item.ItemIdentifier;
 import logisticspipes.utils.item.ItemIdentifierInventory;
 
-public class ModuleCreativeTabBasedItemSink extends LogisticsGuiModule implements
-        IClientInformationProvider, IModuleWatchReciver, IMUICompatibleModule {
+public class ModuleCreativeTabBasedItemSink extends LogisticsGuiModule
+        implements IClientInformationProvider, IModuleWatchReciver, IMUICompatibleModule {
 
     public static final int MAX_ENTRIES = 9;
 

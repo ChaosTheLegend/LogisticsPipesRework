@@ -14,14 +14,10 @@ import net.minecraft.util.IIcon;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.api.IMUICompatibleModule;
-import logisticspipes.gui.hud.modules.HUDStringBasedItemSink;
 import logisticspipes.gui.modularUI.LogisticsModularUI;
 import logisticspipes.gui.modularUI.dynamicModules.ModuleModBasedItemSinkMuiDynamic;
 import logisticspipes.interfaces.IClientInformationProvider;
-import logisticspipes.interfaces.IHUDModuleHandler;
-import logisticspipes.interfaces.IHUDModuleRenderer;
 import logisticspipes.interfaces.IModuleWatchReciver;
-import logisticspipes.interfaces.IStringBasedModule;
 import logisticspipes.modules.abstractmodules.LogisticsGuiModule;
 import logisticspipes.modules.abstractmodules.LogisticsModule;
 import logisticspipes.network.NewGuiHandler;
@@ -30,8 +26,6 @@ import logisticspipes.network.abstractguis.ModuleCoordinatesGuiProvider;
 import logisticspipes.network.abstractguis.ModuleInHandGuiProvider;
 import logisticspipes.network.guis.module.inhand.StringBasedItemSinkModuleGuiInHand;
 import logisticspipes.network.guis.module.inpipe.StringBasedItemSinkModuleGuiSlot;
-import logisticspipes.network.packets.hud.HUDStartModuleWatchingPacket;
-import logisticspipes.network.packets.hud.HUDStopModuleWatchingPacket;
 import logisticspipes.network.packets.module.ItemSinkListPacket;
 import logisticspipes.pipes.PipeLogisticsChassi.ChassiTargetInformation;
 import logisticspipes.proxy.MainProxy;
@@ -41,8 +35,8 @@ import logisticspipes.utils.SinkReply.FixedPriority;
 import logisticspipes.utils.item.ItemIdentifier;
 import logisticspipes.utils.item.ItemIdentifierInventory;
 
-public class ModuleModBasedItemSink extends LogisticsGuiModule implements
-        IClientInformationProvider, IModuleWatchReciver, IMUICompatibleModule {
+public class ModuleModBasedItemSink extends LogisticsGuiModule
+        implements IClientInformationProvider, IModuleWatchReciver, IMUICompatibleModule {
 
     public static final int MAX_ENTRIES = 9;
 

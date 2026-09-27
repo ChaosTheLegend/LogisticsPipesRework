@@ -132,7 +132,11 @@ public class ItemModule extends LogisticsItem implements IGuiHolder<PlayerInvent
         // same IWorldProvider the legacy in-hand path (DummyModuleContainer) uses - modules held in hand aren't
         // installed in a pipe yet, so there's no IPipeServiceProvider, but code like listChanged() still needs
         // a non-null world to check MainProxy.isServer/isClient
-        LogisticsModule module = getModuleForItem(item, null, new DummyWorldProvider(guiData.getPlayer().worldObj), null);
+        LogisticsModule module = getModuleForItem(
+                item,
+                null,
+                new DummyWorldProvider(guiData.getPlayer().worldObj),
+                null);
 
         if (!(module instanceof IMUICompatibleModule compatibleModule)) {
             throw new UnsupportedOperationException(

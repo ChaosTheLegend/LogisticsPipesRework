@@ -2,8 +2,6 @@ package logisticspipes.gui.modularUI.dynamicModules;
 
 import java.util.List;
 
-import net.minecraft.item.ItemStack;
-
 import com.cleanroommc.modularui.api.GuiAxis;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
@@ -56,9 +54,7 @@ public class ModuleCreativeTabBasedItemSinkMuiDynamic extends GenericModuleMUI<M
         widget.child(
                 new Flow(GuiAxis.Y).coverChildren().left(9).top(4).childPadding(3)
                         .crossAxisAlignment(Alignment.CrossAxis.START).child(new TextWidget<>("Creative tab sink"))
-                        .child(buildAnalyseRow(syncManager))
-                        .child(buildEntryList(syncManager))
-        );
+                        .child(buildAnalyseRow(syncManager)).child(buildEntryList(syncManager)));
 
         return widget;
     }
@@ -80,11 +76,8 @@ public class ModuleCreativeTabBasedItemSinkMuiDynamic extends GenericModuleMUI<M
                     PhantomItemSlotSH.class,
                     () -> new PhantomItemSlotSH(new ModularSlot(analyseInventory, 0)));
             slotWidget.syncHandler(slotSH);
-            addSyncHandler = syncManager.getOrCreateSyncHandler(
-                    id + "_add",
-                    0,
-                    InteractionSyncHandler.class,
-                    InteractionSyncHandler::new);
+            addSyncHandler = syncManager
+                    .getOrCreateSyncHandler(id + "_add", 0, InteractionSyncHandler.class, InteractionSyncHandler::new);
         } else {
             slotWidget.slot(analyseInventory, 0);
             addSyncHandler = new InteractionSyncHandler();
@@ -94,16 +87,14 @@ public class ModuleCreativeTabBasedItemSinkMuiDynamic extends GenericModuleMUI<M
             module.addTab(getPhantomTabName());
         });
 
-        return Flow.row().fullWidth().coverChildrenHeight().childPadding(4)
-            .child(slotWidget)
-            .child(new TextWidget<>(IKey.dynamic(this::getPhantomTabName)).expanded())
-            .child(
-                new ButtonWidget<>().syncHandler(addSyncHandler).overlay(IKey.lang("Add")).width(40).height(16));
+        return Flow.row().fullWidth().coverChildrenHeight().childPadding(4).child(slotWidget)
+                .child(new TextWidget<>(IKey.dynamic(this::getPhantomTabName)).expanded())
+                .child(new ButtonWidget<>().syncHandler(addSyncHandler).overlay(IKey.lang("Add")).width(40).height(16));
     }
 
-    private String getPhantomTabName(){
+    private String getPhantomTabName() {
         var stack = analyseInventory.getStackInSlot(0);
-        if(stack == null) return "";
+        if (stack == null) return "";
 
         return ItemIdentifier.get(stack).getCreativeTabName();
     }
@@ -129,24 +120,19 @@ public class ModuleCreativeTabBasedItemSinkMuiDynamic extends GenericModuleMUI<M
         ListWidget<IWidget, ?> list = new ListWidget<>().width(160).height(56);
         for (int i = 0; i < ModuleCreativeTabBasedItemSink.MAX_ENTRIES; i++) {
             int idx = i;
-            InteractionSyncHandler removeSyncHandler = syncManager != null
-                    ? syncManager.getOrCreateSyncHandler(
-                            id + "_remove",
-                            idx,
-                            InteractionSyncHandler.class,
-                            InteractionSyncHandler::new)
-                    : new InteractionSyncHandler();
+            InteractionSyncHandler removeSyncHandler = syncManager != null ? syncManager.getOrCreateSyncHandler(
+                    id + "_remove",
+                    idx,
+                    InteractionSyncHandler.class,
+                    InteractionSyncHandler::new) : new InteractionSyncHandler();
             removeSyncHandler.setOnMousePressed(btn -> {
                 if (btn.mouseButton != 0) return;
                 String tab = entryAt(idx);
                 if (!tab.isEmpty()) module.removeTab(tab);
             });
             list.child(
-                    Flow.row().coverChildren()
-                        .mainAxisAlignment(Alignment.MainAxis.START)
-                        .height(12).childPadding(4)
-                            .child(new TextWidget<>(IKey.dynamic(() -> entryAt(idx))).width(140).height(10))
-                            .child(
+                    Flow.row().coverChildren().mainAxisAlignment(Alignment.MainAxis.START).height(12).childPadding(4)
+                            .child(new TextWidget<>(IKey.dynamic(() -> entryAt(idx))).width(140).height(10)).child(
                                     new ButtonWidget<>().syncHandler(removeSyncHandler)
                                             .overlay(GuiTextures.CROSS_TINY.asIcon().size(8)).size(10)));
         }
