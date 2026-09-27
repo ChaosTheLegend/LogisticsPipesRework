@@ -1199,7 +1199,7 @@ public class LogisticsTileGenericPipe extends TileEntity
 
         if (pipe instanceof IMUICompatiblePipeV2) {
 
-            return ((IMUICompatiblePipeV2) pipe).getPipeGui().getPanel(data, syncManager);
+            return ((IMUICompatiblePipeV2) pipe).getPipeGui().getPanel(data, syncManager, settings);
         }
 
         IMUICompatiblePipe pipeWithGui = (IMUICompatiblePipe) pipe;

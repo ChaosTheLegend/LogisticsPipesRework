@@ -558,7 +558,11 @@ public class ModulePatternCrafting extends LogisticsGuiModule
         return upgradeManager != null && upgradeManager.getFluidCrafter() > 0;
     }
 
-    boolean isPatternCraftingSupported(ItemStack pattern) {
+    /**
+     * Returns false for patterns with fluid entries while the pipe has no fluid crafting upgrade. Such patterns are not
+     * offered to the network.
+     */
+    public boolean isPatternCraftingSupported(ItemStack pattern) {
         return !isFluidCraftingPattern(pattern) || supportsFluidCrafting();
     }
 

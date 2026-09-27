@@ -2,6 +2,7 @@ package logisticspipes.gui.modularUI;
 
 import com.cleanroommc.modularui.factory.GuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widget.ParentWidget;
 
@@ -28,6 +29,14 @@ public abstract class LogisticsModularUI {
                 ModularPanel.defaultPanel(getId(), getWidth(), getHeight()),
                 guiSyncManager,
                 true);
+    }
+
+    /*
+     * Same as getPanel(GuiData, PanelSyncManager), for GUIs that need to configure the UI settings (for example to use
+     * a custom container)
+     */
+    public ModularPanel getPanel(GuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
+        return getPanel(guiData, guiSyncManager);
     }
 
     /*

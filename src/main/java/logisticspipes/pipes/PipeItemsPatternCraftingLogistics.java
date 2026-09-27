@@ -23,6 +23,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidHandler;
 
 import logisticspipes.LogisticsPipes;
+import logisticspipes.api.IMUICompatiblePipeV2;
 import logisticspipes.crafting.ItemMemoryChip;
 import logisticspipes.crafting.ModulePatternCrafting;
 import logisticspipes.crafting.PatternCraftingHudState;
@@ -30,6 +31,8 @@ import logisticspipes.crafting.PatternCraftingTargetSelector;
 import logisticspipes.crafting.PipeFluidPatternSatelliteLogistics;
 import logisticspipes.crafting.PipeItemsPatternSatelliteLogistics;
 import logisticspipes.gui.hud.HUDPatternCrafting;
+import logisticspipes.gui.modularUI.LogisticsModularUI;
+import logisticspipes.gui.modularUI.pipes.patterncrafting.PipePatternCraftingMui;
 import logisticspipes.interfaces.IChangeListener;
 import logisticspipes.interfaces.IHeadUpDisplayRenderer;
 import logisticspipes.interfaces.IHeadUpDisplayRendererProvider;
@@ -82,7 +85,7 @@ import lombok.Getter;
  */
 public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
         implements ICraftItems, IRequireReliableTransport, IFluidSink, IHeadUpDisplayRendererProvider, IChangeListener,
-        IOrderManagerContentReceiver {
+        IOrderManagerContentReceiver, IMUICompatiblePipeV2 {
 
     public enum BlockingMode {
         OFF,
@@ -772,6 +775,11 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
 
     public boolean isBlockingModeFixed() {
         return module.isBlockingModeFixed();
+    }
+
+    @Override
+    public LogisticsModularUI getPipeGui() {
+        return new PipePatternCraftingMui(this);
     }
 
 }
