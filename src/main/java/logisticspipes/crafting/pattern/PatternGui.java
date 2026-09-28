@@ -333,6 +333,10 @@ public class PatternGui extends LogisticsBaseGuiScreen {
         return null;
     }
 
+    public int getInventorySlot() {
+        return patternInventory.getInventorySlot();
+    }
+
     public int getInputSize() {
         return currentPattern().getIngredientSlotCount();
     }
@@ -346,6 +350,11 @@ public class PatternGui extends LogisticsBaseGuiScreen {
     }
 
     private void updatePatternSlotLayout() {
+        for (Object entry : buttonList) {
+            if (entry instanceof GuiButton button && button.id == TYPE_BUTTON_ID) {
+                button.displayString = typeLabel();
+            }
+        }
         if (inventorySlots instanceof PatternContainer) {
             ((PatternContainer) inventorySlots)
                 .updatePatternSlotLayout(

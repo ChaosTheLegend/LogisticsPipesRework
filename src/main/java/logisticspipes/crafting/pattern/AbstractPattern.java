@@ -488,29 +488,35 @@ public abstract class AbstractPattern {
         return stack.getTagCompound();
     }
 
-    /**
-     * Clears the pattern, and sets the given in and outputs. If this is a processing pattern, null items in the inputs
-     * will be ignored. If this is a crafting pattern, null items in the inputs will be respected, and the slot will be
-     * kept empty.
-     *
-     * @param inputs  the new inputs
-     * @param outputs the new outputs
-     */
+    /** Checks the entire import before any existing contents are cleared. */
+    public boolean canSetInputsAndOutputs(List<IPatternStack> inputs, List<Integer> indices,
+            List<IPatternStack> outputs) {
+        if (inputs == null || indices == null || outputs == null || inputs.size() != indices.size()
+            || inputs.size() > getIngredientSlotCount() || outputs.size() > getResultSlotCount()) return false;
+        boolean[] occupied = new boolean[getIngredientSlotCount()];
+        for (int i = 0; i < inputs.size(); i++) {
+            Integer slot = indices.get(i);
+            if (slot == null || slot < 0 || slot >= occupied.length || occupied[slot]) return false;
+            IPatternStack input = inputs.get(i);
+            if (input == null || input.getAmount() <= 0) return false;
+            occupied[slot] = true;
+        }
+        for (IPatternStack output : outputs) {
+            if (output == null || output.getAmount() <= 0) return false;
+        }
+        return true;
+    }
+
+    /** Replaces a complete recipe, preserving the supplied input slot positions. Invalid imports leave it unchanged. */
     public void setInputsAndOutputs(@NonNull List<IPatternStack> inputs, @NonNull List<Integer> indices,
             @NonNull List<IPatternStack> outputs) {
+        if (!canSetInputsAndOutputs(inputs, indices, outputs)) return;
         clear();
-
         for (int i = 0; i < inputs.size(); i++) {
-            IPatternStack input = inputs.get(i);
-
-            setPatternStackInSlot(indices.get(i), input);
+            setPatternStackInSlot(indices.get(i), inputs.get(i));
         }
-
-        var patternSlotId = getIngredientSlotCount();
-        for (int i = 0; i < outputs.size() && patternSlotId < getItemSlotCount(); i++) {
-            IPatternStack output = outputs.get(i);
-            setPatternStackInSlot(patternSlotId, output);
-            patternSlotId++;
+        for (int i = 0; i < outputs.size(); i++) {
+            setPatternStackInSlot(getResultSlotStart() + i, outputs.get(i));
         }
     }
 }

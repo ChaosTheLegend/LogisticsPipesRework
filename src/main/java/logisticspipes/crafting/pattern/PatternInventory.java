@@ -10,14 +10,11 @@ public class PatternInventory implements IInventory {
 
     private final EntityPlayer player;
     @Getter
-    private final ItemStack patternStack;
-    @Getter
     private final int inventorySlot;
 
     public PatternInventory(EntityPlayer player, int inventorySlot) {
         this.player = player;
         this.inventorySlot = inventorySlot;
-        this.patternStack = readPatternStack();
     }
 
     @Override
@@ -90,6 +87,10 @@ public class PatternInventory implements IInventory {
 
     @Override
     public void closeInventory() {}
+
+    public ItemStack getPatternStack() {
+        return readPatternStack();
+    }
 
     private ItemStack readPatternStack() {
         if (inventorySlot < 0 || inventorySlot >= player.inventory.mainInventory.length) {

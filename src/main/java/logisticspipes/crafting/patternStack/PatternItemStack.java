@@ -22,6 +22,7 @@ public class PatternItemStack implements IPatternStack {
 
     public static PatternItemStack readFromNBT(NBTTagCompound tag) {
         ItemStack stack = ItemStack.loadItemStackFromNBT(tag);
+        if (stack != null) stack.stackSize = tag.getInteger("Count");
         return fromItemStack(stack);
     }
 
@@ -63,6 +64,7 @@ public class PatternItemStack implements IPatternStack {
     @Override
     public void writeToNBT(NBTTagCompound tag) {
         makePatternStack().writeToNBT(tag);
+        tag.setInteger("Count", stack.getStackSize());
         tag.setString(TYPE_TAG, TYPE_SOLID);
     }
 

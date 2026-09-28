@@ -1,11 +1,11 @@
 package logisticspipes.nei;
 
-// import com.glodblock.github.nei.recipes.FluidRecipe;
-
 import codechicken.nei.api.API;
 import codechicken.nei.api.IConfigureNEI;
 import codechicken.nei.guihook.GuiContainerManager;
+import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.Mod;
+import gregtech.api.recipe.RecipeCategory;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.config.Configs;
 import logisticspipes.crafting.pattern.PatternGui;
@@ -60,11 +60,14 @@ public class NEILogisticsPipesConfig implements IConfigureNEI {
         // register pattern handling
         API.registerNEIGuiHandler(new LogisticsPattern_NEIGuiHandler());
         API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "crafting");
-        // for (String identifier : FluidRecipe.getSupportRecipes()) {
-        // if (!API.hasGuiOverlayHandler(PatternGui.class, identifier)) {
-        // API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, identifier);
-        // }
-        // }
+        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "crafting2x2");
+        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "smelting");
+        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "solderingstation");
+        if (Loader.isModLoaded("gregtech")) {
+            for (RecipeCategory category : RecipeCategory.ALL_RECIPE_CATEGORIES.values()) {
+                API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, category.unlocalizedName);
+            }
+        }
 
         API.registerGuiOverlayHandler(
                 logisticspipes.gui.GuiCraftingPipe.class,
@@ -79,7 +82,7 @@ public class NEILogisticsPipesConfig implements IConfigureNEI {
 
         if (LogisticsPipes.isGTNH) {
 
-            for (gregtech.api.recipe.RecipeMap map : gregtech.api.recipe.RecipeMap.ALL_RECIPE_MAPS.values()) {
+            for (gregtech.api.recipe.RecipeMap<?> map : gregtech.api.recipe.RecipeMap.ALL_RECIPE_MAPS.values()) {
                 if (!map.unlocalizedName.isEmpty()) {
                     API.registerGuiOverlay(logisticspipes.gui.GuiCraftingPipe.class, map.unlocalizedName);
                     API.registerGuiOverlayHandler(

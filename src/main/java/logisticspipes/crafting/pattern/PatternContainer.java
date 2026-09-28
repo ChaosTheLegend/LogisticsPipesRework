@@ -6,6 +6,7 @@ import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.gui.DummyContainer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
@@ -20,6 +21,7 @@ public class PatternContainer extends DummyContainer {
     private static final int HIDDEN_SLOT_Y = -1000;
 
     private final List<Slot> patternSlots = new ArrayList<>();
+    private final boolean clientSide;
     private int inputLeft;
     private int inputTop;
     private int outputLeft;
@@ -27,6 +29,7 @@ public class PatternContainer extends DummyContainer {
 
     public PatternContainer(IInventory playerInventory, IInventory dummyInventory) {
         super(playerInventory, dummyInventory);
+        clientSide = playerInventory instanceof InventoryPlayer inventory && inventory.player.worldObj.isRemote;
     }
 
     /**
@@ -42,7 +45,8 @@ public class PatternContainer extends DummyContainer {
         AbstractPattern pattern, int inputLeft, int inputTop, int outputLeft, int outputTop) {
         if (patternSlots.isEmpty()) {
             for (int slot = 0; slot < ItemPattern.MAX_ITEM_SLOT_COUNT; slot++) {
-                patternSlots.add(addDummySlot(slot, HIDDEN_SLOT_X, HIDDEN_SLOT_Y));
+                patternSlots.add(addSlotToContainer(
+                    new PatternSlot(_dummyInventory, slot, HIDDEN_SLOT_X, HIDDEN_SLOT_Y, clientSide)));
             }
         }
         updatePatternSlotLayout(pattern, inputLeft, inputTop, outputLeft, outputTop);
@@ -159,6 +163,10 @@ public class PatternContainer extends DummyContainer {
         }
     }
 
+    public boolean isEditingPattern(ItemStack stack) {
+        return _dummyInventory instanceof PatternInventory inventory && inventory.getPatternStack() == stack;
+    }
+
     /**
      * Reloads the dummy inventory contents from the supplied pattern after an external recipe import.
      *
@@ -169,6 +177,12 @@ public class PatternContainer extends DummyContainer {
             pattern = ItemPattern.fromStack(null);
         }
         updatePatternSlotLayout(pattern);
+        if (isEditingPattern(pattern.getPatternStack())) {
+            // PatternInventory reads directly from the updated NBT. Re-inserting display stacks would
+            // convert item ingredients such as filled buckets into fluids.
+            detectAndSendChanges();
+            return;
+        }
         boolean change = false;
 
         for (int i = 0; i < _dummyInventory.getSizeInventory(); ++i) {

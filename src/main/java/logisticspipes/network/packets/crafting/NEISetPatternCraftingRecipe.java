@@ -5,6 +5,7 @@ import logisticspipes.crafting.pattern.AbstractPattern;
 import logisticspipes.crafting.pattern.DefaultPattern;
 import logisticspipes.crafting.pattern.ItemPattern;
 import logisticspipes.crafting.pattern.PatternContainer;
+import logisticspipes.crafting.pattern.ProcessingPattern;
 import logisticspipes.crafting.patternStack.IPatternStack;
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
@@ -31,7 +32,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
     private List<Integer> indices = new ArrayList<>();
     private List<IPatternStack> outputs = new ArrayList<>();
     private int patternInventorySlot = -1;
-    private ItemStack result;
+    private boolean processingPattern;
 
     public NEISetPatternCraftingRecipe(int id) {
         super(id);
@@ -40,19 +41,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
     @Override
     public void processPacket(EntityPlayer player) {
 
-        if (patternInventorySlot >= 0) {
-
-            importRecipe(player, patternInventorySlot, inputs, indices, outputs);
-        }
-
-        // TileEntity tile = getTile(player.worldObj, TileEntity.class);
-        // if (tile instanceof LogisticsCraftingTableTileEntity) {
-        // ((LogisticsCraftingTableTileEntity) tile).handleNEIRecipePacket(getInputs());
-        // } else if (tile instanceof LogisticsTileGenericPipe
-        // && ((LogisticsTileGenericPipe) tile).pipe instanceof PipeBlockRequestTable) {
-        // ((PipeBlockRequestTable) ((LogisticsTileGenericPipe) tile).pipe)
-        // .handleNEIRecipePacket(getInputs());
-        // }
+        importRecipe(player, patternInventorySlot, inputs, indices, outputs);
     }
 
     public void importRecipe(EntityPlayer player, int patternInventorySlot, @NonNull List<IPatternStack> inputs,
@@ -62,26 +51,18 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         ItemStack patternStack = player.inventory.mainInventory[patternInventorySlot];
         if (patternStack == null || patternStack.getItem() != LogisticsPipes.LogisticsPattern) return;
 
-        boolean processingPattern = outputs.size() > DefaultPattern.RESULT_SLOTS
-            || inputs.size() > DefaultPattern.INGREDIENT_SLOTS
-            || usesProcessingInputSlot(indices);
-        ItemPattern.setProcessingPattern(patternStack, processingPattern);
+        if (!(player.openContainer instanceof PatternContainer container)
+            || !container.isEditingPattern(patternStack)) return;
 
+        // Validate before changing the type or clearing the existing recipe.
+        AbstractPattern target = processingPattern ? new ProcessingPattern(patternStack)
+            : new DefaultPattern(patternStack);
+        if (outputs.isEmpty() || !target.canSetInputsAndOutputs(inputs, indices, outputs)) return;
+        ItemPattern.setProcessingPattern(patternStack, processingPattern);
         AbstractPattern pattern = ItemPattern.fromStack(patternStack);
         pattern.setInputsAndOutputs(inputs, indices, outputs);
-
-        // reload the gui from the new pattern
-        if (!(player.openContainer instanceof PatternContainer container)) return;
+        player.inventory.markDirty();
         container.reloadFromPattern(pattern);
-    }
-
-    private boolean usesProcessingInputSlot(List<Integer> indices) {
-        for (Integer index : indices) {
-            if (index != null && index >= DefaultPattern.INGREDIENT_SLOTS) {
-                return true;
-            }
-        }
-        return false;
     }
 
     @Override
@@ -94,6 +75,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         super.writeData(data);
 
         data.writeInt(patternInventorySlot);
+        data.writeBoolean(processingPattern);
         data.writeList(inputs, (data1, object) -> {
             var nbt = new NBTTagCompound();
             object.writeToNBT(nbt);
@@ -118,6 +100,8 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         super.readData(data);
 
         patternInventorySlot = data.readInt();
+        processingPattern = data.readBoolean();
+        indices.clear();
         inputs = data.readList(data1 -> IPatternStack.readFromNBT(data1.readNBTTagCompound()));
         var indicesNBT = data.readNBTTagCompound();
         for (int i = 0; i < inputs.size(); i++) {
