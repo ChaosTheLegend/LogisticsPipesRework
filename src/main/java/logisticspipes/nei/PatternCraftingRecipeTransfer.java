@@ -7,10 +7,10 @@ import codechicken.nei.PositionedStack;
 import codechicken.nei.recipe.GuiOverlayButton.ItemOverlayState;
 import codechicken.nei.recipe.IRecipeHandler;
 import logisticspipes.crafting.pattern.PatternRecipeImport;
-import logisticspipes.gui.modularUI.pipes.patterncrafting.PatternCraftingSyncHandler;
+import logisticspipes.gui.modularUI.pipes.patterncrafting.PatternEditorSyncHandler;
 
 /**
- * NEI recipe transfer into the pattern crafting pipe GUI.
+ * NEI recipe transfer into the pattern editor GUIs (pattern crafting pipe and handheld pattern).
  */
 public final class PatternCraftingRecipeTransfer {
 
@@ -20,7 +20,7 @@ public final class PatternCraftingRecipeTransfer {
         return PatternRecipeImporter.getAllIdents();
     }
 
-    public static int transfer(PatternCraftingSyncHandler syncHandler, IRecipeHandler recipe, int recipeIndex) {
+    public static int transfer(PatternEditorSyncHandler syncHandler, IRecipeHandler recipe, int recipeIndex) {
         PatternRecipeImport recipeImport = PatternRecipeImporter.fromRecipe(recipe, recipeIndex);
         if (recipeImport == null) {
             return 0;

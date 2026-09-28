@@ -8,13 +8,21 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
+import com.cleanroommc.modularui.api.IGuiHolder;
+import com.cleanroommc.modularui.factory.GuiFactories;
+import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import logisticspipes.gui.modularUI.pipes.patterncrafting.HandheldPatternMui;
 import logisticspipes.items.LogisticsItem;
-import logisticspipes.network.NewGuiHandler;
 import logisticspipes.proxy.MainProxy;
 
-public class ItemPattern extends LogisticsItem {
+public class ItemPattern extends LogisticsItem implements IGuiHolder<PlayerInventoryGuiData> {
 
     public static final int INGREDIENT_SLOTS = DefaultPattern.INGREDIENT_SLOTS;
     public static final int RESULT_SLOTS = DefaultPattern.RESULT_SLOTS;
@@ -86,9 +94,20 @@ public class ItemPattern extends LogisticsItem {
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
         if (MainProxy.isServer(world)) {
-            NewGuiHandler.getGui(PatternGuiProvider.class).setInventorySlot(player.inventory.currentItem).open(player);
+            GuiFactories.playerInventory().openFromMainHand(player);
         }
         return stack;
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public ModularScreen createScreen(PlayerInventoryGuiData data, ModularPanel mainPanel) {
+        return new ModularScreen("LogisticsPipes", mainPanel);
+    }
+
+    @Override
+    public ModularPanel buildUI(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {
+        return new HandheldPatternMui(data).buildUI(syncManager, settings);
     }
 
     @Override

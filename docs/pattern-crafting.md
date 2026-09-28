@@ -52,14 +52,14 @@ Request tree ──checkCrafting──> PatternCraftingTemplate (one component p
 | Buffers | `PatternStackBufferHandler` (arrived), `PatternStackRequestHandler` (in flight; shares map with `M.requestedIngredients`) |
 | Persistence | `PP` (orders/promises/branches), buffer/request handlers' own NBT |
 | Stack model | `crafting/patternStack/*` — `IPatternStack`, `PatternItemStack`, `PatternFluidStack`, `PatternStackHelper` |
-| Pattern item | `crafting/pattern/*` — `ItemPattern`, `AbstractPattern`, `DefaultPattern`, `ProcessingPattern`, `PatternHandler`, inventories/containers/GUI, `PatternRecipeImport` |
-| Satellites | `PipeItemsPatternSatelliteLogistics`, `PipeFluidPatternSatelliteLogistics`, `PatternSatelliteInfo`, `PatternSatelliteSelectorGui`, `ItemMemoryChip` |
+| Pattern item | `crafting/pattern/*` — `ItemPattern` (`IGuiHolder`, opens the handheld MUI), `AbstractPattern`, `DefaultPattern`, `ProcessingPattern`, `PatternHandler`, `PatternSource` (pipe slot or held stack), `EditedPatternInventory`, `PatternRecipeImport` |
+| Satellites | `PipeItemsPatternSatelliteLogistics`, `PipeFluidPatternSatelliteLogistics` (both `IPatternSatellitePipe`), `PatternSatelliteInfo`, `PatternSatelliteSelectorGui` (handheld only), `ItemMemoryChip` |
 | Monitoring / HUD | `PatternCraftingHudState`, `gui/hud/HUDPatternCrafting`, `PatternCraftingMonitorRegistry`/`Node`, `gui/popup/PatternRequestMonitorPopup` |
-| GUI | MUI: `gui/modularUI/pipes/patterncrafting/*` (`PipePatternCraftingMui`, `PatternCraftingSyncHandler`, `PatternEditorState`, `PatternCraftingContainer` for NEI). Legacy: `PatternCraftingPipeGui(Provider)` |
-| Packets | `network/packets/gui/PatternCraftingPipe{Cancel,ReturnInputs,Mode}`, `PatternPipe{Select,SlotAction}Packet`, `orderer/PatternCrafting{HudContent,WatchPacket}`, `block/PatternCraftingTableUpdate` |
-| Crafting table | `PatternLogisticsCraftingTableTileEntity` (+Gui/Provider) — solid block meta 6, crafts vanilla recipes for the pipe |
+| GUI | MUI: `gui/modularUI/pipes/patterncrafting/*` — shared editor (`PatternEditor`, `PatternEditorState`, `PatternEditorSyncHandler`, `PatternCraftingContainer` for NEI) used by `PipePatternCraftingMui` (+ `PatternCraftingSyncHandler` for pipe state) and `HandheldPatternMui`; `gui/modularUI/blocks/PatternCraftingTableMui`, `gui/modularUI/pipes/PipeSatelliteMui` (name field for pattern satellites) |
+| Packets | `orderer/PatternCrafting{HudContent,WatchPacket}` (pipe, table and satellite GUIs sync through MUI) |
+| Crafting table | `PatternLogisticsCraftingTableTileEntity` (`IGuiHolder`, opened by `LogisticsSolidBlock` via the MUI tile factory) — solid block meta 6, crafts vanilla recipes for the pipe |
 | New request table | `crafting/requesttable/**` — `RequestTablePipe` (extends `PipeBlockRequestTable`), network grid, fluid storage, storage upgrades (damage 45–48) |
-| NEI | `nei/PatternCraftingRecipeTransfer` (works, MUI pipe GUI), `nei/LogisticPatternHandler` (stub) |
+| NEI | `nei/PatternCraftingRecipeTransfer` (pipe and handheld MUI, through `PatternCraftingContainer`) |
 
 **Core LP classes touched:** `RTN` (`fullFillStaged`, same-item dict promises), `ModuleProvider` /
 `PipeItemsProviderLogistics` (staged reservations), `LogisticsTileGenericPipe` (render target connection, refuse
@@ -187,13 +187,19 @@ Items only (fluids not reserved). Re-reserved on restore for still-requesting or
   names — the link list is not access control.
 - **Reservation:** `reservedOwnerRouter` (router *simple id*) + `reservationBaseline` counts; not persisted.
   Satellite `insertPatternInput` inserts **directly** into its adjacent inventory (no routing).
+- **GUI:** `PipeSatelliteMui` (id, next free id and, for `IPatternSatellitePipe`, the name through a synced string; the
+  server may add a uniqueness suffix, which syncs back). The pattern satellites' `onWrenchClicked` opens it too, so
+  legacy wrenches get MUI. Plain LP satellites keep `GuiSatellitePipe` on legacy wrenches.
 - **Memory chip:** stores `patternSatelliteRefs` + last satellite; modes FAVORITES (link all on sneak-click pipe) /
   APPLY_LAST_TO_RECIPE (`assignSatelliteToAllPatternIngredients`). Clicking a satellite with a renamed chip renames it.
 - **HUD:** `startWatching` (mode 1) → server sends content + `PatternCraftingHudContent`. `checkHudUpdate` sends when
   `shouldRefreshHudState()` (dirty or ≥20 ticks) and state `!equals` old.
-- **MUI:** `getPanel` → `PatternEditorState`, `PatternCraftingSyncHandler` ("pattern_crafting"), 9 real pattern slots,
-  phantom editor slots (limit 127). C→S: SELECT, PATTERN_ACTION, CANCEL, RETURN_INPUTS, BLOCKING_MODE, SATELLITE,
-  IMPORT, REFRESH_SATELLITES. S→C: HUD, SATELLITES, STATE (per tick diffed by string key), SELECT.
+- **MUI:** the pattern is always the pattern item's NBT, read live through a `PatternSource` (`of(pipe)`: 9 slots,
+  links satellites on assign; `heldBy(player, slot)`: 1 slot, the pipe links on resolve). `PatternEditorState` selects
+  one, `EditedPatternInventory` exposes its entries to the phantom editor slots (limit 127, patterns rejected).
+  `PatternEditorSyncHandler` C→S: SELECT, PATTERN_ACTION, SATELLITE, IMPORT, REFRESH_SATELLITES; S→C: SATELLITES,
+  SELECT. The pipe's `PatternCraftingSyncHandler` ("pattern_crafting") adds C→S CANCEL, RETURN_INPUTS, BLOCKING_MODE
+  and S→C HUD, STATE (per tick diffed by string key). The handheld GUI ("pattern_editor") locks the held slot.
 - **Monitor:** `PatternCraftingMonitorRegistry` static synchronized IdentityHashMap order→PatternCraftingOrder;
   request table sends `PatternCraftingWatchPacket` every 2 ticks per watched request.
 
@@ -213,24 +219,24 @@ Legacy tags (see the decision in §10, legacy GUIs get deleted):
 
 | ID | Sev | Status | Issue | Where | Fix idea |
 |---|---|---|---|---|---|
-| S1 | HIGH | **FIXED — `PacketGuards.isOnClient`** · _PARTLY LEGACY: the packet may become unnecessary once the table GUI syncs through MUI_ | S→C packet `PatternCraftingTableUpdate` processed on server → client-authored NBT replaces table inventories = **item creation**. LP has no packet direction guard. | `network/packets/block/PatternCraftingTableUpdate:40`, table `readUpdatePayload:176` | `if (!MainProxy.isClient(player.worldObj)) return;` — consider generic S2C-only flag on ModernPacket |
+| S1 | HIGH | **FIXED — packet deleted**; the table GUI syncs slots and progress through MUI | S→C packet `PatternCraftingTableUpdate` processed on server → client-authored NBT replaces table inventories = **item creation**. LP has no packet direction guard. | `network/packets/block/PatternCraftingTableUpdate:40`, table `readUpdatePayload:176` | `if (!MainProxy.isClient(player.worldObj)) return;` — consider generic S2C-only flag on ModernPacket |
 | S2 | HIGH | **FIXED — `PacketGuards.isOnClient`** · _PARTLY LEGACY: the packet goes away when the request table moves to MUI_ | `RequestTableSetCursorPacket.processPacket` → `player.inventory.setItemStack(getStack())` on server = **item creation**. | `crafting/requesttable/...RequestTableSetCursorPacket:23` | same client-only guard |
 | S3 | HIGH | **FIXED** — the legacy packets are deleted along with the legacy GUI; the MUI open path checks `settings.openGui`; `PatternSatelliteSetName` requires `canConfigurePipe` (≤8 blocks + security) | Pattern pipe packets have no distance/security/open-container check. `PatternPipeSelectPacket` opens the legacy container remotely → steal/swap patterns. Cancel/ReturnInputs/Mode/SlotAction → remote grief. MUI open path (CoreRoutedPipe:~1029) skips `settings.openGui`. | `network/packets/gui/Pattern*` | require `player.openContainer` bound to this pipe (or distance ≤64 + security); don't reopen GUI from select |
 | S4 | HIGH | **FIXED — all request table C→S packets resolve the table from `player.openContainer` (`PacketGuards.getOpenRequestTable`), client coords/dimension ignored** · _PARTLY LEGACY + MUI-REQ: the packets go away; MUI sync handlers must keep the bound-to-open-container rule_ | Request table interact/submit/refresh packets: no open-container check, client-supplied dimension → pull items from any loaded table anywhere. | `RequestTableNetworkInteractPacket:58`, `RequestTableSubmitPacket:41`, `RequestTableRefreshPacket:44` | require open `RequestTableContainer` for that table; use `player.worldObj` |
 | S5 | MED-HIGH | C | Satellites: no network/ownership check — ingredients teleported into any satellite anywhere; selector sends **every** satellite (coords/dim/name) on server to any player. | `M` dispatch ~2801/2808, `SyncHandler.applySatellite:384`, `getKnownSatellitesFor` | require router reachability at assign + dispatch; filter list to player's network |
 | S6 | MED | **FIXED — `PacketGuards.isPrivileged` (op or integrated-server owner)** | `CraftingRequestDebugRequest` packet: anyone can dump/clear all players' requests. | `request/debug/...` | op-only |
-| S7 | LOW | C · _PARTLY LEGACY: `PatternInventory` (handheld) goes away; import + `PipePatternInventory` (used by MUI) still matter_ | Pattern NBT unbounded: client import / phantom slots / nested patterns (B18) can bloat NBT until kick. | `PatternRecipeImport`, `PatternInventory.isItemValidForSlot:85` | reject `ItemPattern` in slots, cap sizes |
+| S7 | LOW | C · _slots part FIXED: `EditedPatternInventory` rejects pattern items; import caps still to check_ | Pattern NBT unbounded: client import / phantom slots / nested patterns (B18) can bloat NBT until kick. | `PatternRecipeImport`, `PatternInventory.isItemValidForSlot:85` | reject `ItemPattern` in slots, cap sizes |
 
 ### 8.2 Item duplication / loss
 
 | ID | Sev | Status | Issue | Where | Fix idea |
 |---|---|---|---|---|---|
-| D1 | HIGH | V | **Partial dispatch duplicates.** Assignments inserted one-by-one; first short insert returns false but already-inserted items stay in machine and in buffer (`removeBufferedPlan` only on success) → reinserted later. Same for local-then-satellite in `dispatch()`; satellite capacity checked per assignment not cumulatively. | `AIH:231-244`, `M:~2786-2815`, `M:~1938-1953` | subtract actually-inserted amounts from buffer per assignment; check/reserve satellites before local insert; cumulative sat simulation |
-| D2 | HIGH | V | **Wrong face for sided inventories.** `getInsertionOrientation` returns `tile.orientation` (pipe→tile, far face); TransactorSimple uses it for `getAccessibleSlotsFromSide`/`canInsertItem`. Capacity check uses the correct `opposite`. Core LP uses `getPointedOrientation().getOpposite()` (CoreRoutedPipe:1690). → stuck or (multi-ingredient) D1. Sneaky upgrade side also ignored by snapshot. | `M:1329-1335`, `AIH:449` | return `tile.orientation.getOpposite()` when no sneaky; same side everywhere |
-| D3 | HIGH | C | Fluid capacity simulated per fluid against empty handler → 2 fluids into 1 tank both pass, second fails for real → D1. `availablePatternSetsForFluids` over-reports. | `AIH:208-219, 247-268` | cumulative check / insert fluids first and abort cleanly |
-| D4 | HIGH | C* · _PARTLY LEGACY: the ×2 overflow is legacy only (MUI checks `canMultiply`); byte Count in NBT is still HIGH_ | **Byte `Count`**: ItemStack NBT in 1.7.10 stores Count as byte. Buffers/requested/orders/promises with >127 items truncate or go ≤0 on save → voided or restore throws forever (L3). Also `MULTIPLY_TWO` 64→128 → -128 → ingredient vanishes; request table stack upgrades (up to 2048) lose items on save & vanilla slot sync. | `PatternItemStack.writeToNBT`, `PP:374`, `Ord:646`, `SimpleStackInventory.writeToNBT:171`, `PatternPipeSlotActionPacket:83`, `RequestTablePipe:131` | write int amount separately; clamp multiply (`canMultiply`); cap/sync table stacks. *Check no GTNH mixin widens Count.* |
+| D1 | HIGH |  **FIXED** — every inserted amount leaves the buffer per assignment; a partly inserted set becomes `pendingDispatch` and is finished before any other push; satellite amounts merged per satellite+item for the room check  | **Partial dispatch duplicates.** Assignments inserted one-by-one; first short insert returns false but already-inserted items stay in machine and in buffer (`removeBufferedPlan` only on success) → reinserted later. Same for local-then-satellite in `dispatch()`; satellite capacity checked per assignment not cumulatively. | `AIH:231-244`, `M:~2786-2815`, `M:~1938-1953` | subtract actually-inserted amounts from buffer per assignment; check/reserve satellites before local insert; cumulative sat simulation |
+| D2 | HIGH |  **FIXED** — `getInsertionOrientation` = sneaky side, else `orientation.getOpposite()`; snapshot, room, transactor and fluid fill all use it  | **Wrong face for sided inventories.** `getInsertionOrientation` returns `tile.orientation` (pipe→tile, far face); TransactorSimple uses it for `getAccessibleSlotsFromSide`/`canInsertItem`. Capacity check uses the correct `opposite`. Core LP uses `getPointedOrientation().getOpposite()` (CoreRoutedPipe:1690). → stuck or (multi-ingredient) D1. Sneaky upgrade side also ignored by snapshot. | `M:1329-1335`, `AIH:449` | return `tile.orientation.getOpposite()` when no sneaky; same side everywhere |
+| D3 | HIGH |  **FIXED** — `canFitFluids`: same fluids merged, each simulated, several distinct fluids must also fit the reported tanks together (no tank info → one fluid at a time)  | Fluid capacity simulated per fluid against empty handler → 2 fluids into 1 tank both pass, second fails for real → D1. `availablePatternSetsForFluids` over-reports. | `AIH:208-219, 247-268` | cumulative check / insert fluids first and abort cleanly |
+| D4 | HIGH |  **FIXED for pattern data** — `PatternItemStack.writeItem/readItem` add an int `lpCount` (buffers, requested, lost queue, pattern entries, orders/promises via `PP`); request table stacks still open (left for the request table migration)  | **Byte `Count`**: ItemStack NBT in 1.7.10 stores Count as byte. Buffers/requested/orders/promises with >127 items truncate or go ≤0 on save → voided or restore throws forever (L3). Also `MULTIPLY_TWO` 64→128 → -128 → ingredient vanishes; request table stack upgrades (up to 2048) lose items on save & vanilla slot sync. | `PatternItemStack.writeToNBT`, `PP:374`, `Ord:646`, `SimpleStackInventory.writeToNBT:171`, `PatternPipeSlotActionPacket:83`, `RequestTablePipe:131` | write int amount separately; clamp multiply (`canMultiply`); cap/sync table stacks. *Check no GTNH mixin widens Count.* |
 | D5 | MED | C | Snapshot merge uses NBT-blind `equalsForCrafting`; real inventory uses exact equality → over-estimates room → D1. Merging also skips `isItemValidForSlot`. `amountOf`/`BH.amount(ItemIdentifier)` NBT-blind while `remove` exact. | `AIH:365, 500` | exact equality + validity check |
-| D6 | MED | C | BLOCKING insert clamp (`missingFor`) not considered by `canInsertPatternIngredients` → short insert → D1. | `AIH:424-428` | apply clamp in check too |
+| D6 | MED |  C · _mitigated by D1: a clamped short insert now becomes a pending set, no dupe_  | BLOCKING insert clamp (`missingFor`) not considered by `canInsertPatternIngredients` → short insert → D1. | `AIH:424-428` | apply clamp in check too |
 | D7 | MED | P | Non-sided targets: extraction pulls any exact-match item from any slot → re-extracts unconsumed ingredients (catalysts, container-return), or player items from shared chests. | `AIH:561-575` | track produced amounts / output slots |
 | D8 | MED | P | Removing/swapping a pattern with buffered ingredients: `ingredientBuffer.removeAll(slot)` voids them; new pattern in same slot inherits old buffer. | `M:~1911`, `M:~2207` | `flushBufferedIngredientsToStorage(slot)` on pattern change |
 | D9 | MED | P | Same-pipe intermediate not fully accepted locally → remainder to storage but still counted `sendSuccessfull` → parent waits. | `RE:246-249, 414` | clamp to local room / defer |
@@ -250,7 +256,7 @@ Legacy tags (see the decision in §10, legacy GUIs get deleted):
 | C6 | HIGH | C | `canProvide` promises the same extra multiple times in one tree (no `root.getAllPromissesFor` subtraction like upstream `ModuleCrafter`), ignores filters. | `M:~621-639` | sum extras − existing promises; apply filters |
 | C7 | HIGH | C | **Staged restore can freeze forever & wipe new orders.** Any unresolvable router (broken while offline / unloaded) → retry every tick forever (exception + NBT parse each tick). While pending: `writeToNBT` saves old snapshot, new staged crafts still accepted; on eventual success `clear()` orphans them (output orders stuck, reservations leak). | `M:411-417, 511-530`, `Coord:135-194`, `PP` | per-order restore, drop/refund unresolvable after N tries, gate fulfil while pending or merge |
 | C8 | MED-HIGH | C/P | BLOCKING/SMART never unlocks if target has permanent contents (circuits, molds, fuel, unregistered chance byproducts): `isEmpty` scans all raw slots/tanks. | `AIH:511-539`, `M:~2241-2256` | only insertable side slots / only pattern items / track inserted batch |
-| C9 | MED-HIGH | C/P | Active satellite batch holds direct satellite objects; satellite broken/unloaded → `isConsumed` never true → whole pipe blocked. Batch & reservation not persisted (lost guarantees on reload; stale simple-id lock). | `M:~2872-2941, 1406, 1873`, sat `reserveFor:236` | store UUID, re-resolve, timeout; key reservation by router UUID, persist |
+| C9 | MED-HIGH | C/P · _the D1 `pendingDispatch` isn't persisted either: after a reload the rest of a partly inserted set stays in the buffer_ | Active satellite batch holds direct satellite objects; satellite broken/unloaded → `isConsumed` never true → whole pipe blocked. Batch & reservation not persisted (lost guarantees on reload; stale simple-id lock). | `M:~2872-2941, 1406, 1873`, sat `reserveFor:236` | store UUID, re-resolve, timeout; key reservation by router UUID, persist |
 | C10 | MED | C | Fluid orders dropped: no fluid handler found → `sendFailed()` every 6 ticks (removes order, no re-request). Transient (wrench cycle, target replaced). | `RE:266-270` | just return like item path |
 | C11 | MED | C | Rejected staged handoff releases reservations inherited from parent (copy has `providerReserved=true`) → double release later. | `Br:351-373` | release only what the copy itself reserved |
 | C12 | MED | C | Cancel with child orders in another pipe: removes output order on wrong manager (no-op), releases child reservations without unstaging, marks same-index local slot cancelled. | `Coord:289-311`, `Ord:384-394` | route cancel to owning module |
@@ -290,7 +296,7 @@ Legacy tags (see the decision in §10, legacy GUIs get deleted):
 | F10 | MED | C | Queries mutate state: `refreshRunningCraftState` from `sinksItem`/HUD, recomputed many times per tick with inventory scans. | `M:~2233, 848` | refresh once per tick in `tick()` |
 | F11 | MED | C | `areAllOrdersBuffered` in every `sinksItem` → nested `canSink` per order destination. | `M:2306-2351` | per-tick cache |
 | F12 | MED | C | Monitor watch packets rebuilt + global registry cleanup scan every 2 ticks per watched request, no diff, even non-pattern requests. | `PipeBlockRequestTable:117-121, 623` | send on change only |
-| F13 | MED | C | Pattern crafting table: full recipe scan on every insert/decr/extract; full-NBT update packet to every chunk watcher per change. | table `:417, 652` | cache recipe; throttle, GUI viewers only |
+| F13 | MED | C · _update packet part FIXED (deleted with the legacy GUI)_ | Pattern crafting table: full recipe scan on every insert/decr/extract; ~~full-NBT update packet to every chunk watcher per change~~. | table `:417, 652` | cache recipe; throttle, GUI viewers only |
 | F14 | LOW-MED | C | `copyForAmount` rebuilds subtree + O(n²) merge per slice; finished subtrees still persisted; `liveOrders` never pruned. | `Br` | prune consumed branches |
 | F15 | LOW-MED | C | Satellite lookups O(n) per ingredient; `ensureAllSatelliteStatus` name-conflict O(n) every 40 ticks per sat → O(n²). | sat `:72-94, 209, 538` | id/uuid index maps; name check only on rename/load |
 | F16 | LOW | C | MUI S_STATE recomputed per tick per viewer (parses 9 patterns, `getPickBlock`); satellite list unbounded. | `PatternCraftingSyncHandler:214-230` | cache |
@@ -312,14 +318,16 @@ Legacy tags (see the decision in §10, legacy GUIs get deleted):
 |---|---|---|---|---|---|
 | G1 | MED | C | HUD glasses stop updating while any MUI GUI is open: sync handler's `getHudState()` clears dirty first, `checkHudUpdate` returns early. `playerStartWatching` sets `oldHudState` without broadcasting to others. | `PatternCraftingSyncHandler:209`, `P:613-619, 750` | always compare cached state / revision counter |
 | G2 | MED | P · _LEGACY + MUI-REQ: the legacy container goes away; the MUI table must size slots from server-synced upgrade counts_ | Request table container slot count differs client/server with storage upgrades (upgrade inv not synced) → client IOOBE. | `RequestTableContainer:53-60` | send sizes in open packet |
-| G3 | MED | C · _LEGACY: handheld `PatternInventory` goes away_ | Handheld `PatternInventory` captures stack once → GUI works on stale NBT (fluid slot treated as item → wrong satellite type). | `PatternInventory:21`, `PatternGui:320,338,356` | read live stack |
+| G3 | MED | **REMOVED with legacy GUI** (`PatternSource.heldBy` reads the live stack) | Handheld `PatternInventory` captures stack once → GUI works on stale NBT (fluid slot treated as item → wrong satellite type). | `PatternInventory:21`, `PatternGui:320,338,356` | read live stack |
 | G4 | LOW-MED | P | MUI client starts at slot 0, server at `findInitialSlot` → phantom slots may write wrong pattern's data client-side until next change. | `PipePatternCraftingMui:134` | pass initial slot in open data |
 | G5 | LOW | C | HUD double-counts ingredient buffered once but used in several input slots. | `M:864, 941` | |
 | G6 | LOW | C | Satellite renamed to chip's custom name on every click; unique-name suffix change not dirtied/synced. | sat `:583, 548` | |
 | G7 | LOW | C | Request table grid prefers ore-dict substitutes over exact items. | `RequestTablePipe:788, 899` | exact pass first |
-| G8 | LOW | C · _LEGACY + MUI-REQ: stub for the legacy handheld GUI; a MUI handheld GUI needs NEI transfer like the pipe MUI_ | Handheld pattern NEI handler is an empty stub but registered. | `nei/LogisticPatternHandler:23`, `NEILogisticsPipesConfig:63` | implement or unregister |
+| G8 | LOW | **FIXED** — stub deleted; the handheld MUI uses `PatternCraftingContainer` like the pipe | Handheld pattern NEI handler is an empty stub but registered. | `nei/LogisticPatternHandler:23`, `NEILogisticsPipesConfig:63` | implement or unregister |
 | G9 | LOW | C | `PatternFluidStack` calls NEI `StackInfo` from common code → NoClassDefFoundError without NEI; globally synchronized. | `patternStack/PatternFluidStack:10,55` | guard with `Loader.isModLoaded` |
 | G10 | LOW | C | Request table ingredient multiplier unbounded (overflow / huge trees). | `RequestTablePipe:757` | cap |
+| G11 | MED | C | Other MUIs use value sync handlers without `allowC2S()`, so client edits are dropped (same bug as the satellite field). | `PipeFluidSupplierMk2Mui:59,73,107`, `ModuleProviderMuiDynamic:135` | add `.allowC2S()` |
+| G12 | MED | C | MUI shift-click merges can't work with `ItemIdentifierInventory` (every read returns a new stack), e.g. pipe upgrade slots via `UpgradeManager.getUpgradeInventory`. `SimpleInventorySlot` doesn't help there. | `PipeGuiFactory.getUpgradeGui`, `ItemIdentifierInventory` | slot/handler that writes the merged stack back |
 
 ### 8.7 Dead code — REMOVED (2026-09-27)
 
@@ -333,9 +341,16 @@ NBT (legacy-only, **old saves lose those entries**); `PatternContainer.reloadFro
 `PatternPipeSelect`, `PatternPipeSlotAction`, `PatternCraftingPipe{Cancel,ReturnInputs,Mode}`,
 `PatternPipeSatelliteAssignment`. `ModulePatternCrafting` now extends `LogisticsModule` (not `LogisticsGuiModule`).
 The pipe's `onWrenchClicked` opens the MUI, so legacy wrenches also get MUI after the security check.
-Still legacy (no MUI yet): handheld `PatternGui`, `PatternCraftingTableGui`, `RequestTableGui`, `GuiSatellitePipe`
-(the pattern satellite rename field isn't in `PipeSatelliteMui`), `PatternSatelliteSelectorGui` (used by `PatternGui`).
-The `LogisticPatternHandler` NEI stub (G8) is kept because it holds a commented draft.
+**Legacy crafting table and satellite GUIs removed (2026-09-28):** `PatternCraftingTableGui`, `PatternCraftingTableGuiProvider`,
+the `PatternCraftingTableUpdate` packet (the table no longer broadcasts its NBT to the chunk), the pattern branch of
+`GuiSatellitePipe` (restored to upstream) and the `PatternSatelliteSetName` packet (lang key `gui.satellite.Save` dropped).
+The table's MUI slots flag the tile via `scheduleInventoryCheck()` because MUI shift-click merges don't call `markDirty`.
+**Legacy handheld pattern GUI removed (2026-09-28):** `PatternGui`, `PatternGuiProvider`, `PatternContainer`,
+`PatternInventory`, `PatternSlotLayout`, `PatternSatelliteSelectorGui`, the packets `PatternSlotActionPacket` and
+`PatternSatelliteAssignmentPacket`, and the NEI stubs `LogisticPatternHandler`, `FluidPatternRecipeTransferHandler`,
+`LogisticsPattern_NEIGuiHandler` (its commented draft was superseded by `PatternRecipeImporter`). `PipePatternInventory`
+became `EditedPatternInventory` over a `PatternSource`. The pipe and the handheld GUI now share one editor.
+Still legacy (no MUI yet): `RequestTableGui`.
 
 ### 8.8 Checked, no issue
 
@@ -349,23 +364,20 @@ The `LogisticPatternHandler` NEI stub (G8) is kept because it holds a commented 
 
 ### 8.9 Legacy review summary
 
-- **Not important (LEGACY):** G2, G3, G8, L5. Delete them with their GUIs. (C31 and the dead code are already removed.)
+- **Not important (LEGACY):** G2, L5. Delete them with their GUIs. (C31, G3, G8 and the dead code are already done.)
 - **Partly legacy, remainder still matters:** S1, S2, S3, S4, S7, D4, D11, C23, F17.
 - **Requirements for the MUI migration:** S4 (sync handlers bound to the container), D11 (cap pickup at max stack), G2 (dynamic
-  slot count from synced upgrades), G8 (NEI transfer for the handheld pattern).
+  slot count from synced upgrades). G8 (NEI transfer for the handheld pattern) is done.
 - **Not affected by the GUI change:** everything else. The core logic (module, branches, IO, persistence, satellites,
   request table server logic) stays.
-- **Legacy GUIs to remove or migrate:** `PatternCraftingPipeGui`+Provider (MUI version exists), `PatternGui`+Provider
-  (handheld), `PatternCraftingTableGui`+Provider, `RequestTableGui`+`RequestTableContainer`, `GuiSatellitePipe`,
-  `PatternSatelliteSelectorGui`, plus their packets (`PatternPipeSelect`, `PatternPipeSlotAction`,
-  `PatternCraftingPipe{Cancel,ReturnInputs,Mode}`, `PatternPipeSatelliteAssignment`, handheld `PatternSlotAction`,
-  `RequestTable*Packet`).
+- **Legacy GUIs left to remove or migrate:** `RequestTableGui`+`RequestTableContainer` plus `RequestTable*Packet`.
+  Done: pattern pipe, crafting table, satellites, handheld pattern.
 
 ## 9. Suggested fix order
 
 1. ~~**Exploits:** S1, S2, S3, S4, S6~~ done. S5 waits on the satellite routing design (see the §10 note on teleporting).
-2. **Legacy removal:** ~~pattern pipe GUI~~ done. Next, migrate the handheld pattern, the crafting table, the satellites and the request table to MUI (MUI-REQ items apply).
-3. **Dupes/loss:** D2 (one-line side fix) → D1 (buffer accounting on partial insert) → D3, D4 (int counts).
+2. **Legacy removal:** ~~pattern pipe GUI~~, ~~crafting table~~, ~~satellites~~, ~~handheld pattern~~ done. Only the request table is left (MUI-REQ items apply).
+3. **Dupes/loss:** ~~D2, D1, D3, D4~~ done (D4 except request table). Left: D5, D7–D12 (D6 mitigated).
 4. **Stalls:** C1, C2, C5, C4, C10, C7.
 5. **Perf:** F2 (debug gate) → F5/F6/F7 (per-tick + parsed-pattern caches) → F3/F4 (request table).
 6. **Leaks:** L1, L2, L3.
@@ -379,6 +391,8 @@ The `LogisticPatternHandler` NEI stub (G8) is kept because it holds a commented 
 - Items don't get dropped from the crafting pipe on break
 - Items get teleported to satellite pipes instead of traveling to them when requested
 - Pattern crafting pipe voids excess fluids if there's no storage for them in the network, in this case it should hault, and either continue crafting in non-blocking mode, or error and wait untill there's space available, nothing should be voided
+- ~~satellite name field doesn't update and errors when trying to give it a name (likely permission check fail)~~
+- ~~shift-click transfering items that already present in pattern crafting table doesn't correctly display them in gui, this leads to several bugs, such as wrong crafts and missing items~~
 
 ### Suggestions
 
@@ -386,10 +400,24 @@ The `LogisticPatternHandler` NEI stub (G8) is kept because it holds a commented 
 - Eventually implement buffer upgrade for supplier pipe as well
 - When copying recipe from nei, multiple stacks get compressed into one and then if the amount >127 doesn't add the item. make the nei import add stacks as is without compressing them, and then allow player to combine them manually (either by hand, or with "combine" button)
 - request relay - AE2 integration. Add a special block that connect to both me and LP network, allow it to request items from LP network through AE net and supply items from AE network to LP.
+- Crafting request improvement. It will be staged:
+1) request item select - same as the current system
+2) calculation screen - like in AE2 - calculate steps, required items, estimates crafting time. if all ingredients presents, dispatch routing path calculations
+3) request monitor - actually monitor the completeness of the request, if it breaks, item gets lost, pipe disconnects or something else, monitor displays the error
+4) deliver output - send the output to the requester and show it
+- Add crafting monitor upgrade to supplier pipes
+- Add crafting requests for suppliers as a toggleable option (possible upgrade?)
+
+### Minors
+
+- Minor gui change for upgrade menu, make gaps smaller, check styling
 
 ### Decisions
 
 - **Legacy GUIs are deprecated** (prototyping only) and will be deleted. MUI migration is the priority; don't spend
   effort keeping legacy GUI paths compatible. Bugs that exist only in legacy paths → delete the path once MUI covers it.
+- In new MUIs add an upgrade side gui with 4 slots for upgrades. this includes pattern crafting table
+  (**done for the table:** 4 speed-upgrade slots in `PipeGuiFactory.getUpgradeGui(syncManager, slotFactory)`; old
+  3-slot saves load into the first 3 slots)
 
 <!-- Add design intent, known-by-design behaviours, and decisions here. -->

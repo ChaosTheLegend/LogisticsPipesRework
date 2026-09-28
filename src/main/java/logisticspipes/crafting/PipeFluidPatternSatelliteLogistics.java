@@ -18,14 +18,8 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidTankInfo;
 import net.minecraftforge.fluids.IFluidHandler;
 
-import logisticspipes.LogisticsPipes;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
-import logisticspipes.network.GuiIDs;
-import logisticspipes.network.PacketHandler;
-import logisticspipes.network.abstractpackets.ModernPacket;
-import logisticspipes.network.packets.satpipe.PatternSatelliteSetName;
-import logisticspipes.network.packets.satpipe.SatPipeSetID;
 import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
@@ -34,7 +28,8 @@ import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.item.ItemIdentifierStack;
 import logisticspipes.utils.tuples.Pair;
 
-public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.PipeFluidSatellite {
+public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.PipeFluidSatellite
+        implements IPatternSatellitePipe {
 
     private static final Set<PipeFluidPatternSatelliteLogistics> ALL_PATTERN_FLUID_SATELLITES = Collections
             .newSetFromMap(new WeakHashMap<>());
@@ -142,13 +137,12 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
                 : satelliteName.trim();
     }
 
-    /**
-     * Returns the player-defined label without falling back to the internal numeric satellite id.
-     */
+    @Override
     public String getSatelliteName() {
         return satelliteName == null ? "" : satelliteName.trim();
     }
 
+    @Override
     public void setSatelliteName(String satelliteName) {
         this.satelliteName = satelliteName == null ? "" : satelliteName.trim();
         ensureAllSatelliteStatus();
@@ -360,13 +354,8 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
 
     @Override
     public void onWrenchClicked(EntityPlayer entityplayer) {
-        ModernPacket idPacket = PacketHandler.getPacket(SatPipeSetID.class).setSatID(satelliteId).setPosX(getX())
-                .setPosY(getY()).setPosZ(getZ());
-        MainProxy.sendPacketToPlayer(idPacket, entityplayer);
-        ModernPacket namePacket = PacketHandler.getPacket(PatternSatelliteSetName.class).setString(getSatelliteName())
-                .setPosX(getX()).setPosY(getY()).setPosZ(getZ());
-        MainProxy.sendPacketToPlayer(namePacket, entityplayer);
-        entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_SatelitePipe_ID, getWorld(), getX(), getY(), getZ());
+        // legacy wrenches get the MUI as well; the name field lives there
+        openGui(entityplayer, this);
     }
 
     @Override

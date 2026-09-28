@@ -9,17 +9,22 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.cleanroommc.modularui.api.IGuiHolder;
+import com.cleanroommc.modularui.factory.PosGuiData;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.blocks.LogisticsSolidTileEntity;
 import logisticspipes.blocks.crafting.AutoCraftingInventory;
 import logisticspipes.crafting.pattern.AbstractPattern;
 import logisticspipes.crafting.pattern.ItemPattern;
-import logisticspipes.interfaces.IGuiTileEntity;
+import logisticspipes.gui.modularUI.blocks.PatternCraftingTableMui;
 import logisticspipes.items.ItemUpgrade;
-import logisticspipes.network.NewGuiHandler;
-import logisticspipes.network.PacketHandler;
-import logisticspipes.network.abstractguis.CoordinatesGuiProvider;
-import logisticspipes.network.packets.block.PatternCraftingTableUpdate;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.request.resources.IResource;
 import logisticspipes.utils.CraftingUtil;
@@ -29,11 +34,11 @@ import logisticspipes.utils.item.ItemIdentifierInventory;
 import logisticspipes.utils.item.SimpleStackInventory;
 
 public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileEntity
-        implements IInventory, IGuiTileEntity, ISimpleInventoryEventHandler {
+        implements IInventory, IGuiHolder<PosGuiData>, ISimpleInventoryEventHandler {
 
     private static final int INPUT_SIZE = 9;
     private static final int OUTPUT_SIZE = 3;
-    private static final int UPGRADE_SIZE = 3;
+    private static final int UPGRADE_SIZE = 4;
     private static final int OUTPUT_START = INPUT_SIZE;
     private static final int BASE_COOLDOWN = 100;
     private static final int MIN_COOLDOWN = 1;
@@ -54,6 +59,7 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
     private int craftCooldown = 0;
     private EntityPlayer fake;
     private boolean suppressRecipeCheck = false;
+    private boolean inventoryCheckPending = false;
 
     public PatternLogisticsCraftingTableTileEntity() {
         input.addListener(this);
@@ -61,7 +67,7 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         upgrades.addListener(this);
     }
 
-    static boolean isSpeedUpgrade(ItemStack stack) {
+    public static boolean isSpeedUpgrade(ItemStack stack) {
         return stack != null && stack.getItem() == LogisticsPipes.UpgradeItem
                 && stack.getItemDamage() == ItemUpgrade.SPEED;
     }
@@ -77,6 +83,18 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
     public void updateEntity() {
         super.updateEntity();
         finishCraftIfReady();
+        if (inventoryCheckPending && worldObj != null && !MainProxy.isClient(worldObj)) {
+            inventoryCheckPending = false;
+            onPlayerInventoryChanged();
+        }
+    }
+
+    /**
+     * Asks the table to re-check its inputs on its next tick; used by the GUI, whose slots don't always mark the
+     * inventories dirty.
+     */
+    public void scheduleInventoryCheck() {
+        inventoryCheckPending = true;
     }
 
     @Override
@@ -169,24 +187,6 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         writeCraftingPayload(tag);
     }
 
-    public void writeUpdatePayload(NBTTagCompound tag) {
-        writeCraftingPayload(tag);
-    }
-
-    public void readUpdatePayload(NBTTagCompound tag) {
-        clearInventory(input);
-        clearInventory(output);
-        clearInventory(pendingOutput);
-        clearInventory(upgrades);
-        input.readFromNBT(tag, "patternInput");
-        output.readFromNBT(tag, "patternOutput");
-        pendingOutput.readFromNBT(tag, "patternPendingOutput");
-        upgrades.readFromNBT(tag, "patternUpgrades");
-        craftStartedAt = tag.hasKey("craftStartedAt") ? tag.getLong("craftStartedAt") : -1;
-        craftReadyAt = tag.hasKey("craftReadyAt") ? tag.getLong("craftReadyAt") : -1;
-        craftCooldown = tag.getInteger("craftCooldown");
-    }
-
     private void writeCraftingPayload(NBTTagCompound tag) {
         input.writeToNBT(tag, "patternInput");
         output.writeToNBT(tag, "patternOutput");
@@ -198,8 +198,14 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
     }
 
     @Override
-    public CoordinatesGuiProvider getGuiProvider() {
-        return NewGuiHandler.getGui(PatternCraftingTableGuiProvider.class).setCraftingTable(this);
+    @SideOnly(Side.CLIENT)
+    public ModularScreen createScreen(PosGuiData data, ModularPanel mainPanel) {
+        return new ModularScreen("LogisticsPipes", mainPanel);
+    }
+
+    @Override
+    public ModularPanel buildUI(PosGuiData data, PanelSyncManager syncManager, UISettings settings) {
+        return new PatternCraftingTableMui(this).buildUI(syncManager);
     }
 
     public SimpleStackInventory getInputInventory() {
@@ -226,11 +232,14 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
     }
 
     public void onPlayerInventoryChanged() {
+        if (isClientSide()) {
+            // the GUI's client copy of the inventories fires the listeners too; crafting there would desync it
+            return;
+        }
         finishCraftIfReady();
         tryStartCrafting();
         finishPendingOutputIfPossible();
         markDirty();
-        sendUpdatePayload();
     }
 
     @Override
@@ -299,7 +308,6 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         if (!suppressRecipeCheck) {
             tryStartCrafting();
             markDirty();
-            sendUpdatePayload();
         }
         return amount;
     }
@@ -319,30 +327,34 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         return inserted;
     }
 
-    public boolean insertPatternPlanFromPatternPipe(List<PatternIngredientAssignment> assignments) {
+    /**
+     * Inserts a set from a pattern pipe into the input slots, all or nothing: nothing goes in unless every assignment
+     * fits, so the table never starts a recipe from part of a set. Returns the inserted amount per assignment.
+     */
+    public int[] insertPatternPlanFromPatternPipe(List<PatternIngredientAssignment> assignments) {
         finishCraftIfReady();
+        int[] inserted = new int[assignments == null ? 0 : assignments.size()];
         if (assignments == null || assignments.isEmpty() || !canAcceptInput()) {
-            return false;
+            return inserted;
         }
         for (PatternIngredientAssignment assignment : assignments) {
             ItemStack stack = assignment.stack().makePatternStack();
             if (stack == null || roomForPatternPipeSlot(assignment.inputSlot(), stack) < stack.stackSize) {
-                return false;
+                return inserted;
             }
         }
         suppressRecipeCheck = true;
-        boolean insertedAll = true;
-        for (PatternIngredientAssignment assignment : assignments) {
-            ItemStack stack = assignment.stack().makePatternStack();
-            if (insertFromPatternPipe(assignment.inputSlot(), stack) != stack.stackSize) {
-                insertedAll = false;
+        try {
+            for (int i = 0; i < assignments.size(); i++) {
+                PatternIngredientAssignment assignment = assignments.get(i);
+                inserted[i] = insertFromPatternPipe(assignment.inputSlot(), assignment.stack().makePatternStack());
             }
+        } finally {
+            suppressRecipeCheck = false;
         }
-        suppressRecipeCheck = false;
         tryStartCrafting();
         markDirty();
-        sendUpdatePayload();
-        return insertedAll;
+        return inserted;
     }
 
     public boolean insertPatternFromPatternPipe(ItemStack pattern, int sets) {
@@ -377,7 +389,6 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         suppressRecipeCheck = false;
         tryStartCrafting();
         markDirty();
-        sendUpdatePayload();
         return insertedAll;
     }
 
@@ -395,12 +406,15 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         return null;
     }
 
-    public int getProgressScaled(int scale) {
+    /**
+     * Progress of the running craft from 0 to 1. Only meaningful on the server; the GUI syncs it.
+     */
+    public double getProgress() {
         if (craftStartedAt < 0 || craftReadyAt <= craftStartedAt || worldObj == null) {
             return 0;
         }
         long elapsed = Math.max(0, worldObj.getTotalWorldTime() - craftStartedAt);
-        return Math.min(scale, (int) (elapsed * scale / Math.max(1, craftReadyAt - craftStartedAt)));
+        return Math.min(1D, (double) elapsed / (craftReadyAt - craftStartedAt));
     }
 
     public int getSpeedUpgradeCount() {
@@ -415,7 +429,7 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
     }
 
     private void tryStartCrafting() {
-        if (craftReadyAt >= 0 || hasPendingOutput()) {
+        if (isClientSide() || craftReadyAt >= 0 || hasPendingOutput()) {
             return;
         }
         if (fake == null) {
@@ -428,7 +442,6 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         craftStartedAt = worldObj != null ? worldObj.getTotalWorldTime() : 0;
         craftReadyAt = craftStartedAt + craftCooldown;
         markDirty();
-        sendUpdatePayload();
     }
 
     private int getReducedCooldown() {
@@ -447,7 +460,6 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         finishPendingOutputIfPossible();
         tryStartCrafting();
         markDirty();
-        sendUpdatePayload();
     }
 
     private boolean consumeCraftableInputsToPendingOutput() {
@@ -643,22 +655,13 @@ public class PatternLogisticsCraftingTableTileEntity extends LogisticsSolidTileE
         return craftReadyAt >= 0;
     }
 
+    private boolean isClientSide() {
+        return worldObj == null || MainProxy.isClient(worldObj);
+    }
+
     private void clearInventory(SimpleStackInventory inventory) {
         for (int i = 0; i < inventory.getSizeInventory(); i++) {
             inventory.setInventorySlotContents(i, null);
         }
-    }
-
-    private void sendUpdatePayload() {
-        if (worldObj == null || MainProxy.isClient(worldObj)) {
-            return;
-        }
-        NBTTagCompound payload = new NBTTagCompound();
-        writeUpdatePayload(payload);
-        MainProxy.sendPacketToAllWatchingChunk(
-                xCoord,
-                zCoord,
-                MainProxy.getDimensionForWorld(worldObj),
-                PacketHandler.getPacket(PatternCraftingTableUpdate.class).setUpdatePayload(payload).setTilePos(this));
     }
 }

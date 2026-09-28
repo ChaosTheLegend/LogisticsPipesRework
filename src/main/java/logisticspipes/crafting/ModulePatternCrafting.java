@@ -107,6 +107,11 @@ public class ModulePatternCrafting extends LogisticsModule
     private int runningCraft = -1;
     private boolean runningCraftInAdjacent = false;
     private PatternSatelliteDispatchBatch activeSatelliteBatch;
+    /**
+     * A set that only partly went into the target (or its satellites). It is finished before anything else is pushed,
+     * so the target never keeps half a set. Not persisted, like the satellite batch (C9).
+     */
+    private PatternDispatchPlan pendingDispatch;
     private boolean checkingBufferedOrders = false;
     private NBTTagCompound pendingStagedCrafting;
     private boolean pendingRequestedIngredientRestoreRetries;
@@ -895,6 +900,10 @@ public class ModulePatternCrafting extends LogisticsModule
         PipeItemsPatternCraftingLogistics.BlockingMode mode = getEffectiveBlockingMode();
         AdjacentTile connected = adjacentInventory.getConnected();
         int bufferedSets = completeBufferedSets(patternSlot);
+        if (pendingDispatch != null) {
+            return pendingDispatch.patternSlot == patternSlot ? "Waiting: target full, finishing a partly inserted set"
+                    : "Waiting: another pattern is finishing its set";
+        }
         if (activeSatelliteBatch != null) {
             return activeSatelliteBatch.patternSlot == patternSlot ? "Doing: waiting on satellites"
                     : "Waiting: satellites reserved";
@@ -1330,12 +1339,15 @@ public class ModulePatternCrafting extends LogisticsModule
         return _service.getUpgradeManager(slot, positionInt);
     }
 
+    /**
+     * The side of the target that items and fluids are inserted through: the sneaky side, otherwise the face touching
+     * the pipe. {@code tile.orientation} points from the pipe to the target, so its opposite is the touching face.
+     */
     ForgeDirection getInsertionOrientation(AdjacentTile tile) {
-        ForgeDirection insertion = tile.orientation;
         if (getUpgradeManager().hasSneakyUpgrade()) {
-            insertion = getUpgradeManager().getSneakyOrientation();
+            return getUpgradeManager().getSneakyOrientation();
         }
-        return insertion;
+        return tile.orientation.getOpposite();
     }
 
     int getRunningCraftForHandler() {
@@ -1873,6 +1885,10 @@ public class ModulePatternCrafting extends LogisticsModule
      * adjacent target is processing a batch inserted by that slot.
      */
     private void pushBufferedIngredients() {
+        if (pendingDispatch != null) {
+            resumePendingDispatch();
+            return;
+        }
         refreshSatelliteDispatchBatch();
         if (activeSatelliteBatch != null) {
             debugEventThrottled(
@@ -1909,6 +1925,10 @@ public class ModulePatternCrafting extends LogisticsModule
      * Pushes complete buffered sets for one pattern slot into the connected crafting target.
      */
     private void pushBufferedIngredientsFor(int patternSlot) {
+        if (pendingDispatch != null) {
+            // a partly inserted set goes first; tick() resumes it
+            return;
+        }
         ItemStack pattern = getPatternStack(patternSlot);
         if (pattern == null) {
             debugEvent("BUFFER", "push slot=%d dropped buffer: pattern missing", patternSlot);
@@ -1940,7 +1960,8 @@ public class ModulePatternCrafting extends LogisticsModule
         }
         int sets = Math.min(bufferedSets, insertableSets);
         PatternDispatchPlan plan = findInsertableBufferedPlan(patternSlot, pattern, sets);
-        if (plan == null || !plan.dispatch()) {
+        DispatchResult result = plan == null ? DispatchResult.NONE : plan.dispatch();
+        if (result == DispatchResult.NONE) {
             debugEventThrottled(
                     "BUFFER",
                     "push slot=%d failed: bufferedSets=%d insertableSets=%d selectedSets=%d",
@@ -1950,15 +1971,49 @@ public class ModulePatternCrafting extends LogisticsModule
                     sets);
             return;
         }
-        sets = insertedSetsFromPlan(pattern, plan.assignments());
+        if (result == DispatchResult.PARTIAL) {
+            pendingDispatch = plan;
+            debugEvent("BUFFER", "push slot=%d partly inserted, finishing the set later", patternSlot);
+            markHudStateDirty();
+            return;
+        }
         debugEvent(
                 "BUFFER",
                 "push slot=%d inserted sets=%d bufferedSets=%d insertableSets=%d",
                 patternSlot,
-                sets,
+                insertedSetsFromPlan(pattern, plan.assignments()),
                 bufferedSets,
                 insertableSets);
-        removeBufferedPlan(patternSlot, plan.assignments());
+        finishDispatch(plan);
+    }
+
+    /**
+     * Retries the rest of a partly inserted set. Gates like blocking mode don't apply: the set is already partly in the
+     * target and must be completed.
+     */
+    private void resumePendingDispatch() {
+        PatternDispatchPlan plan = pendingDispatch;
+        if (getPatternStack(plan.patternSlot) == null) {
+            debugEvent("BUFFER", "pending set slot=%d dropped: pattern missing", plan.patternSlot);
+            plan.abandon();
+            pendingDispatch = null;
+            return;
+        }
+        if (plan.dispatch() != DispatchResult.COMPLETE) {
+            debugEventThrottled("BUFFER", 40, "pending set slot=%d still waiting for room", plan.patternSlot);
+            return;
+        }
+        pendingDispatch = null;
+        debugEvent("BUFFER", "pending set slot=%d finished", plan.patternSlot);
+        finishDispatch(plan);
+    }
+
+    /**
+     * Bookkeeping once a whole set went into the target: lock the running craft and track the satellite batch.
+     */
+    private void finishDispatch(PatternDispatchPlan plan) {
+        int patternSlot = plan.patternSlot;
+        PipeItemsPatternCraftingLogistics.BlockingMode mode = getEffectiveBlockingMode();
         if (plan.hasSatellites()) {
             activeSatelliteBatch = plan.createSatelliteBatch(patternSlot);
             setRunningCraft(patternSlot, true);
@@ -1981,7 +2036,7 @@ public class ModulePatternCrafting extends LogisticsModule
             if (assignments == null) {
                 continue;
             }
-            PatternDispatchPlan dispatchPlan = buildDispatchPlan(pattern, assignments);
+            PatternDispatchPlan dispatchPlan = buildDispatchPlan(patternSlot, pattern, assignments);
             if (dispatchPlan != null && dispatchPlan.canDispatch()) {
                 return dispatchPlan;
             }
@@ -1989,11 +2044,12 @@ public class ModulePatternCrafting extends LogisticsModule
         return null;
     }
 
-    private PatternDispatchPlan buildDispatchPlan(ItemStack pattern, List<PatternIngredientAssignment> assignments) {
+    private PatternDispatchPlan buildDispatchPlan(int patternSlot, ItemStack pattern,
+            List<PatternIngredientAssignment> assignments) {
         if (pattern == null || assignments == null || assignments.isEmpty()) {
             return null;
         }
-        PatternDispatchPlan plan = new PatternDispatchPlan(pattern, assignments);
+        PatternDispatchPlan plan = new PatternDispatchPlan(patternSlot, pattern, assignments);
         AbstractPattern configuredPattern = ItemPattern.fromStack(pattern);
         for (PatternIngredientAssignment assignment : assignments) {
             IPatternStack configuredStack = configuredPattern.getPatternStackInSlot(assignment.inputSlot());
@@ -2038,12 +2094,6 @@ public class ModulePatternCrafting extends LogisticsModule
             sets = Math.min(sets, assignment.stack().getAmount() / ingredient.getAmount());
         }
         return sets == Integer.MAX_VALUE ? 0 : sets;
-    }
-
-    private void removeBufferedPlan(int patternSlot, List<PatternIngredientAssignment> plan) {
-        for (PatternIngredientAssignment assignment : plan) {
-            ingredientBuffer.remove(patternSlot, assignment.stack(), assignment.stack().getAmount());
-        }
     }
 
     /**
@@ -2105,6 +2155,11 @@ public class ModulePatternCrafting extends LogisticsModule
         Set<Integer> slotsToCancel = new HashSet<>(stagedCrafting.cancelPattern(patternSlot));
         boolean changed = !slotsToCancel.isEmpty();
         slotsToCancel.add(patternSlot);
+        if (pendingDispatch != null && slotsToCancel.contains(pendingDispatch.patternSlot)) {
+            pendingDispatch.abandon();
+            pendingDispatch = null;
+            changed = true;
+        }
         if (activeSatelliteBatch != null && slotsToCancel.contains(activeSatelliteBatch.patternSlot)) {
             activeSatelliteBatch.retrieveAndRelease();
             activeSatelliteBatch = null;
@@ -2142,6 +2197,11 @@ public class ModulePatternCrafting extends LogisticsModule
         slotsToClear.addAll(requestedIngredients.keySet());
         if (runningCraft >= 0) {
             slotsToClear.add(runningCraft);
+        }
+        if (pendingDispatch != null) {
+            slotsToClear.add(pendingDispatch.patternSlot);
+            pendingDispatch.abandon();
+            pendingDispatch = null;
         }
         if (activeSatelliteBatch != null) {
             slotsToClear.add(activeSatelliteBatch.patternSlot);
@@ -2695,6 +2755,10 @@ public class ModulePatternCrafting extends LogisticsModule
 
         World world = pipe.getWorld();
 
+        if (pendingDispatch != null) {
+            pendingDispatch.abandon();
+            pendingDispatch = null;
+        }
         if (activeSatelliteBatch != null) {
             activeSatelliteBatch.retrieveAndRelease();
             activeSatelliteBatch = null;
@@ -2708,40 +2772,69 @@ public class ModulePatternCrafting extends LogisticsModule
         ingredientBuffer.dropContents(world, pipe.getX(), pipe.getY(), pipe.getZ());
     }
 
+    /**
+     * Everything of one item a set sends to one satellite; {@code remaining} is what still has to go in.
+     */
     private static class ItemSatelliteAssignment {
 
         private final PipeItemsPatternSatelliteLogistics satellite;
         private final ItemIdentifierStack stack;
+        private int remaining;
 
         private ItemSatelliteAssignment(PipeItemsPatternSatelliteLogistics satellite, ItemIdentifierStack stack) {
             this.satellite = satellite;
             this.stack = stack;
+            this.remaining = stack.getStackSize();
         }
     }
 
+    /**
+     * Everything of one fluid a set sends to one fluid satellite; {@code remaining} is what still has to go in.
+     */
     private static class FluidSatelliteAssignment {
 
         private final PipeFluidPatternSatelliteLogistics satellite;
         private final FluidIdentifier fluid;
-        private final int amount;
+        private int amount;
+        private int remaining;
 
         private FluidSatelliteAssignment(PipeFluidPatternSatelliteLogistics satellite, FluidIdentifier fluid,
                 int amount) {
             this.satellite = satellite;
             this.fluid = fluid;
             this.amount = amount;
+            this.remaining = amount;
         }
     }
 
+    private enum DispatchResult {
+        /** Nothing went in; the buffer is unchanged. */
+        NONE,
+        /** Part of the set went in and left the buffer; the rest must follow before anything else. */
+        PARTIAL,
+        /** The whole set went in. */
+        COMPLETE
+    }
+
+    /**
+     * One set (or several) of buffered ingredients on its way into the target and its satellites.
+     * <p>
+     * Every amount that goes in leaves the buffer right away, per assignment, so a short insert can never leave items
+     * both in the target and in the buffer (D1). What didn't fit stays buffered and is retried by the next
+     * {@link #dispatch()}.
+     */
     private class PatternDispatchPlan {
 
+        private final int patternSlot;
         private final ItemStack pattern;
         private final List<PatternIngredientAssignment> assignments;
         private final List<PatternIngredientAssignment> localAssignments = new ArrayList<>();
         private final List<ItemSatelliteAssignment> itemSatelliteAssignments = new ArrayList<>();
         private final List<FluidSatelliteAssignment> fluidSatelliteAssignments = new ArrayList<>();
+        private boolean started;
 
-        private PatternDispatchPlan(ItemStack pattern, List<PatternIngredientAssignment> assignments) {
+        private PatternDispatchPlan(int patternSlot, ItemStack pattern, List<PatternIngredientAssignment> assignments) {
+            this.patternSlot = patternSlot;
             this.pattern = pattern;
             this.assignments = new ArrayList<>(assignments);
         }
@@ -2754,12 +2847,29 @@ public class ModulePatternCrafting extends LogisticsModule
             localAssignments.add(assignment);
         }
 
+        /**
+         * Amounts of the same item for the same satellite are merged, so the room check covers all of them together.
+         */
         private void addItemSatellite(PipeItemsPatternSatelliteLogistics satellite, ItemIdentifierStack stack) {
+            for (ItemSatelliteAssignment existing : itemSatelliteAssignments) {
+                if (existing.satellite == satellite && existing.stack.getItem().equals(stack.getItem())) {
+                    existing.stack.setStackSize(existing.stack.getStackSize() + stack.getStackSize());
+                    existing.remaining += stack.getStackSize();
+                    return;
+                }
+            }
             itemSatelliteAssignments.add(new ItemSatelliteAssignment(satellite, stack));
         }
 
         private void addFluidSatellite(PipeFluidPatternSatelliteLogistics satellite, FluidIdentifier fluid,
                 int amount) {
+            for (FluidSatelliteAssignment existing : fluidSatelliteAssignments) {
+                if (existing.satellite == satellite && existing.fluid.equals(fluid)) {
+                    existing.amount += amount;
+                    existing.remaining += amount;
+                    return;
+                }
+            }
             fluidSatelliteAssignments.add(new FluidSatelliteAssignment(satellite, fluid, amount));
         }
 
@@ -2787,35 +2897,121 @@ public class ModulePatternCrafting extends LogisticsModule
             return true;
         }
 
-        private boolean dispatch() {
-            if (!canDispatch()) {
-                return false;
+        /**
+         * Inserts whatever is still missing. The full room check only runs before the first attempt; once part of the
+         * set is in, the rest is inserted as room appears.
+         */
+        private DispatchResult dispatch() {
+            if (!started && !canDispatch()) {
+                return DispatchResult.NONE;
             }
             List<PipeItemsPatternSatelliteLogistics> reservedItemSatellites = new ArrayList<>();
             List<PipeFluidPatternSatelliteLogistics> reservedFluidSatellites = new ArrayList<>();
             if (!reserveSatellites(reservedItemSatellites, reservedFluidSatellites)) {
-                releaseSatellites(reservedItemSatellites, reservedFluidSatellites);
-                return false;
+                if (!started) {
+                    releaseSatellites(reservedItemSatellites, reservedFluidSatellites);
+                    return DispatchResult.NONE;
+                }
+                return DispatchResult.PARTIAL;
             }
-            if (!localAssignments.isEmpty() && !adjacentInventory.insertPatternIngredients(pattern, localAssignments)) {
+            insertLocal();
+            for (ItemSatelliteAssignment assignment : itemSatelliteAssignments) {
+                if (assignment.remaining <= 0) {
+                    continue;
+                }
+                int inserted = assignment.satellite
+                        .insertPatternInput(new ItemIdentifierStack(assignment.stack.getItem(), assignment.remaining));
+                if (inserted > 0) {
+                    assignment.remaining -= inserted;
+                    ingredientBuffer.remove(
+                            patternSlot,
+                            new PatternItemStack(new ItemIdentifierStack(assignment.stack.getItem(), inserted)),
+                            inserted);
+                    started = true;
+                }
+            }
+            for (FluidSatelliteAssignment assignment : fluidSatelliteAssignments) {
+                if (assignment.remaining <= 0) {
+                    continue;
+                }
+                int inserted = assignment.satellite.insertPatternInput(assignment.fluid, assignment.remaining);
+                if (inserted > 0) {
+                    assignment.remaining -= inserted;
+                    ingredientBuffer.remove(patternSlot, new PatternFluidStack(assignment.fluid, inserted), inserted);
+                    started = true;
+                }
+            }
+            if (isComplete()) {
+                return DispatchResult.COMPLETE;
+            }
+            if (!started) {
                 releaseSatellites(reservedItemSatellites, reservedFluidSatellites);
+                return DispatchResult.NONE;
+            }
+            return DispatchResult.PARTIAL;
+        }
+
+        private void insertLocal() {
+            if (localAssignments.isEmpty()) {
+                return;
+            }
+            int[] inserted = adjacentInventory.insertPatternIngredients(pattern, localAssignments);
+            List<PatternIngredientAssignment> missing = new ArrayList<>();
+            for (int i = 0; i < localAssignments.size(); i++) {
+                PatternIngredientAssignment assignment = localAssignments.get(i);
+                int amount = Math.max(0, Math.min(inserted[i], assignment.stack().getAmount()));
+                if (amount > 0) {
+                    ingredientBuffer.remove(patternSlot, assignment.stack(), amount);
+                    started = true;
+                }
+                if (amount < assignment.stack().getAmount()) {
+                    IPatternStack rest = assignment.stack().copy();
+                    rest.addAmount(-amount);
+                    missing.add(new PatternIngredientAssignment(assignment.inputSlot(), rest));
+                }
+            }
+            localAssignments.clear();
+            localAssignments.addAll(missing);
+        }
+
+        private boolean isComplete() {
+            if (!localAssignments.isEmpty()) {
                 return false;
             }
             for (ItemSatelliteAssignment assignment : itemSatelliteAssignments) {
-                int inserted = assignment.satellite.insertPatternInput(assignment.stack);
-                if (inserted != assignment.stack.getStackSize()) {
-                    releaseSatellites(reservedItemSatellites, reservedFluidSatellites);
+                if (assignment.remaining > 0) {
                     return false;
                 }
             }
             for (FluidSatelliteAssignment assignment : fluidSatelliteAssignments) {
-                int inserted = assignment.satellite.insertPatternInput(assignment.fluid, assignment.amount);
-                if (inserted != assignment.amount) {
-                    releaseSatellites(reservedItemSatellites, reservedFluidSatellites);
+                if (assignment.remaining > 0) {
                     return false;
                 }
             }
             return true;
+        }
+
+        /**
+         * Gives up on the rest of the set: pulls what already reached the satellites back to storage and releases them.
+         * The parts still missing are in the buffer, which the caller flushes; items already in the local target stay
+         * there, like any dispatched set.
+         */
+        private void abandon() {
+            for (ItemSatelliteAssignment assignment : itemSatelliteAssignments) {
+                int delivered = assignment.stack.getStackSize() - assignment.remaining;
+                if (delivered > 0) {
+                    assignment.satellite.retrieveOrCancelToStorage(
+                            new ItemIdentifierStack(assignment.stack.getItem(), delivered),
+                            false);
+                }
+            }
+            for (FluidSatelliteAssignment assignment : fluidSatelliteAssignments) {
+                int delivered = assignment.amount - assignment.remaining;
+                if (delivered > 0) {
+                    assignment.satellite.retrieveFluidToStorage(assignment.fluid, delivered);
+                }
+            }
+            releaseSatellites(uniqueItemSatellites(), uniqueFluidSatellites());
         }
 
         private PatternSatelliteDispatchBatch createSatelliteBatch(int patternSlot) {

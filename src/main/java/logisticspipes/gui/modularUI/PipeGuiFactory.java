@@ -1,5 +1,7 @@
 package logisticspipes.gui.modularUI;
 
+import java.util.function.IntFunction;
+
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 
@@ -54,6 +56,17 @@ public class PipeGuiFactory {
     }
 
     public static ParentWidget getUpgradeGui(IItemHandlerModifiable upgradeHandler, PanelSyncManager syncManager) {
+        return getUpgradeGui(
+                syncManager,
+                i -> new ModularSlot(upgradeHandler, i).filter(PipeGuiFactory::isUpgradeItem));
+    }
+
+    /*
+     * Same as getUpgradeGui(IItemHandlerModifiable, PanelSyncManager), for callers that need their own slots (a
+     * narrower filter, a change listener, a different slot class). The factory is called for the 4 slot indices; the
+     * slot group and accessibility are set here.
+     */
+    public static ParentWidget getUpgradeGui(PanelSyncManager syncManager, IntFunction<ModularSlot> slotFactory) {
 
         syncManager.registerSlotGroup("upgrade_inventory", 4);
 
@@ -63,8 +76,7 @@ public class PipeGuiFactory {
                         SlotGroupWidget.builder().row("I").row("I").row("I").row("I").key(
                                 'I',
                                 i -> new ItemSlot().slot(
-                                        new ModularSlot(upgradeHandler, i).slotGroup("upgrade_inventory")
-                                                .filter(PipeGuiFactory::isUpgradeItem).accessibility(true, true))
+                                        slotFactory.apply(i).slotGroup("upgrade_inventory").accessibility(true, true))
                                         .background(UITexture.fullImage(UpgradeSlotTexture)))
                                 .build())
                 .padding(4).coverChildrenHeight();

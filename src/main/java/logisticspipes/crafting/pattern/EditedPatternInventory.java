@@ -4,25 +4,27 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 
-import logisticspipes.LogisticsPipes;
-import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
+/**
+ * Inventory view of one pattern's ingredient and result entries, backed by the pattern item's NBT.
+ * <p>
+ * Works for any {@link PatternSource}; the selected pattern is re-read from the source on every call.
+ */
+public class EditedPatternInventory implements IInventory {
 
-public class PipePatternInventory implements IInventory {
-
-    private final PipeItemsPatternCraftingLogistics pipe;
+    private final PatternSource source;
     private int patternSlot;
 
-    public PipePatternInventory(PipeItemsPatternCraftingLogistics pipe, int patternSlot) {
-        this.pipe = pipe;
+    public EditedPatternInventory(PatternSource source, int patternSlot) {
+        this.source = source;
         setPatternSlot(patternSlot);
     }
 
     public void setPatternSlot(int patternSlot) {
-        this.patternSlot = Math.max(0, Math.min(8, patternSlot));
+        this.patternSlot = Math.max(0, Math.min(source.getPatternCount() - 1, patternSlot));
     }
 
     public ItemStack getPatternStack() {
-        return pipe.getPatternModule().getPatternItemStack(patternSlot);
+        return source.getPatternStack(patternSlot);
     }
 
     @Override
@@ -59,7 +61,7 @@ public class PipePatternInventory implements IInventory {
 
     @Override
     public String getInventoryName() {
-        return "Pipe Pattern";
+        return "Pattern";
     }
 
     @Override
@@ -74,18 +76,18 @@ public class PipePatternInventory implements IInventory {
 
     @Override
     public void markDirty() {
-        pipe.getPatternModule().markPatternInventoryDirty();
+        source.markPatternChanged(patternSlot);
     }
 
     @Override
     public boolean isUseableByPlayer(EntityPlayer player) {
-        ItemStack pattern = getPatternStack();
-        return pattern != null && pattern.getItem() == LogisticsPipes.LogisticsPattern;
+        return PatternSource.isPattern(getPatternStack());
     }
 
     @Override
     public boolean isItemValidForSlot(int slot, ItemStack stack) {
-        return stack != null;
+        // a pattern inside a pattern would nest NBT without bound (S7)
+        return stack != null && !(stack.getItem() instanceof ItemPattern);
     }
 
     @Override

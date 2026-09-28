@@ -13,6 +13,9 @@ import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import com.cleanroommc.modularui.api.IGuiHolder;
+import com.cleanroommc.modularui.factory.GuiFactories;
+
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.LPConstants;
@@ -79,6 +82,12 @@ public class LogisticsSolidBlock extends BlockContainer {
             int par6, float par7, float par8, float par9) {
         if (!par5EntityPlayer.isSneaking()) {
             TileEntity tile = par1World.getTileEntity(par2, par3, par4);
+            if (tile instanceof IGuiHolder) {
+                if (MainProxy.isServer(par5EntityPlayer.worldObj)) {
+                    GuiFactories.tileEntity().open(par5EntityPlayer, par2, par3, par4);
+                }
+                return true;
+            }
             if (tile instanceof IGuiTileEntity) {
                 if (MainProxy.isServer(par5EntityPlayer.worldObj)) {
                     ((IGuiTileEntity) tile).getGuiProvider().setTilePos(tile).open(par5EntityPlayer);

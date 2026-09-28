@@ -21,6 +21,7 @@ import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.request.resources.IResource;
 import logisticspipes.utils.AdjacentTile;
+import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.InventoryHelper;
 import logisticspipes.utils.SidedInventoryMinecraftAdapter;
 import logisticspipes.utils.item.ItemIdentifier;
@@ -64,15 +65,8 @@ class AdjacentInventoryHandler {
         if (connected.tile instanceof PatternLogisticsCraftingTableTileEntity) {
             return ((PatternLogisticsCraftingTableTileEntity) connected.tile).roomForPatternPipeItem(item);
         }
-        IInventory inventory = (IInventory) connected.tile;
-        if (inventory instanceof net.minecraft.inventory.ISidedInventory) {
-            inventory = new SidedInventoryMinecraftAdapter(
-                    (net.minecraft.inventory.ISidedInventory) inventory,
-                    connected.orientation.getOpposite(),
-                    false);
-        }
         IInventoryUtil inv = SimpleServiceLocator.inventoryUtilFactory
-                .getInventoryUtil(inventory, module.getInsertionOrientation(connected));
+                .getInventoryUtil(getInsertableInventory(connected), module.getInsertionOrientation(connected));
         return inv.roomForItem(item, 9999);
     }
 
@@ -166,44 +160,43 @@ class AdjacentInventoryHandler {
             if (!(connected.tile instanceof IFluidHandler handler)) {
                 return false;
             }
-            ForgeDirection side = getFluidInsertionOrientation(connected);
-            for (PatternFluidStack fluid : fluidIngredients) {
-                FluidStack stack = fluid.makeFluidStack();
-                if (handler.fill(side, stack, false) < stack.amount) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    boolean insertPatternIngredients(ItemStack pattern, List<PatternIngredientAssignment> assignments) {
-        if (!canInsertPatternIngredients(pattern, assignments)) {
-            return false;
-        }
-        AdjacentTile connected = getConnected();
-        if (connected.tile instanceof PatternLogisticsCraftingTableTileEntity table) {
-            return table.insertPatternPlanFromPatternPipe(assignments);
-        }
-        for (PatternIngredientAssignment assignment : assignments) {
-            ItemIdentifierStack item = PatternStackHelper.asSolidStack(assignment.stack());
-            if (item != null) {
-                if (insert(pattern, item.clone()) != item.getStackSize()) {
-                    return false;
-                }
-                continue;
-            }
-            if (assignment.stack() instanceof PatternFluidStack fluid
-                    && insertFluid(fluid.copy()) != fluid.getAmount()) {
+            if (!canFitFluids(handler, getFluidInsertionOrientation(connected), fluidIngredients, 1)) {
                 return false;
             }
         }
         return true;
     }
 
+    /**
+     * Inserts the assignments into the connected target and returns how much of each actually went in, index by index.
+     * Callers must take exactly these amounts out of their buffer: a short insert can leave part of the set in the
+     * target, and counting it as not inserted would duplicate it (D1).
+     */
+    int[] insertPatternIngredients(ItemStack pattern, List<PatternIngredientAssignment> assignments) {
+        int[] inserted = new int[assignments.size()];
+        AdjacentTile connected = getConnected();
+        if (connected == null) {
+            return inserted;
+        }
+        if (connected.tile instanceof PatternLogisticsCraftingTableTileEntity table) {
+            return table.insertPatternPlanFromPatternPipe(assignments);
+        }
+        for (int i = 0; i < assignments.size(); i++) {
+            PatternIngredientAssignment assignment = assignments.get(i);
+            ItemIdentifierStack item = PatternStackHelper.asSolidStack(assignment.stack());
+            if (item != null) {
+                inserted[i] = insert(pattern, item.clone());
+            } else if (assignment.stack() instanceof PatternFluidStack fluid) {
+                inserted[i] = insertFluid(fluid.copy());
+            }
+        }
+        return inserted;
+    }
+
     private int availablePatternSetsForFluids(List<PatternFluidStack> ingredients, AdjacentTile connected) {
         IFluidHandler handler = (IFluidHandler) connected.tile;
         ForgeDirection side = getFluidInsertionOrientation(connected);
+        ingredients = mergeFluids(ingredients, 1);
         int sets = Integer.MAX_VALUE;
         for (PatternFluidStack ingredient : ingredients) {
             int upperBound = ingredient.getFluid().getFreeSpaceInsideTank(handler, side) / ingredient.getAmount();
@@ -221,7 +214,106 @@ class AdjacentInventoryHandler {
             module.debug("adjacent fluid capacity ingredient=%s upperBound=%d sets=%d", ingredient, upperBound, low);
             sets = Math.min(sets, low);
         }
-        return sets == Integer.MAX_VALUE ? 0 : Math.max(0, sets);
+        if (sets == Integer.MAX_VALUE) {
+            return 0;
+        }
+        if (ingredients.size() > 1) {
+            // each fluid fits on its own; find how many sets fit when they all go in together
+            int low = 0;
+            int high = sets;
+            while (low < high) {
+                int mid = low + (high - low + 1) / 2;
+                if (canFitFluids(handler, side, ingredients, mid)) {
+                    low = mid;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            sets = low;
+        }
+        return Math.max(0, sets);
+    }
+
+    /**
+     * Whether {@code sets} times the given fluids fit into the handler at the same time (D3).
+     * <p>
+     * {@code fill(simulate)} only answers for one fluid against the current contents, so two fluids aimed at a single
+     * tank would both pass. Each fluid (amounts of the same fluid merged) must pass the simulation, and when there are
+     * several distinct fluids they must also fit the reported tanks together: a fluid goes into tanks that already hold
+     * it, then into empty tanks, and a tank never takes two fluids. A handler without tank info can't prove that, so it
+     * only accepts one fluid at a time.
+     */
+    private boolean canFitFluids(IFluidHandler handler, ForgeDirection side, List<PatternFluidStack> fluids, int sets) {
+        List<PatternFluidStack> merged = mergeFluids(fluids, sets);
+        for (PatternFluidStack fluid : merged) {
+            FluidStack stack = fluid.makeFluidStack();
+            if (handler.fill(side, stack, false) < stack.amount) {
+                return false;
+            }
+        }
+        if (merged.size() <= 1) {
+            return true;
+        }
+        FluidTankInfo[] tanks = handler.getTankInfo(side);
+        if (tanks == null || tanks.length == 0) {
+            return false;
+        }
+        FluidIdentifier[] contents = new FluidIdentifier[tanks.length];
+        int[] room = new int[tanks.length];
+        for (int i = 0; i < tanks.length; i++) {
+            if (tanks[i] == null) {
+                continue;
+            }
+            FluidStack held = tanks[i].fluid;
+            boolean empty = held == null || held.amount <= 0;
+            contents[i] = empty ? null : FluidIdentifier.get(held);
+            room[i] = Math.max(0, tanks[i].capacity - (empty ? 0 : held.amount));
+        }
+        for (PatternFluidStack fluid : merged) {
+            long remaining = fluid.getAmount();
+            for (int i = 0; i < tanks.length && remaining > 0; i++) {
+                if (contents[i] != null && contents[i].equals(fluid.getFluid())) {
+                    int used = (int) Math.min(remaining, room[i]);
+                    room[i] -= used;
+                    remaining -= used;
+                }
+            }
+            for (int i = 0; i < tanks.length && remaining > 0; i++) {
+                if (tanks[i] != null && contents[i] == null && room[i] > 0) {
+                    contents[i] = fluid.getFluid();
+                    int used = (int) Math.min(remaining, room[i]);
+                    room[i] -= used;
+                    remaining -= used;
+                }
+            }
+            if (remaining > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Copies the fluids multiplied by {@code sets}, with amounts of the same fluid added together.
+     */
+    private static List<PatternFluidStack> mergeFluids(List<PatternFluidStack> fluids, int sets) {
+        List<PatternFluidStack> merged = new ArrayList<>();
+        for (PatternFluidStack fluid : fluids) {
+            long amount = (long) fluid.getAmount() * sets;
+            PatternFluidStack existing = null;
+            for (PatternFluidStack candidate : merged) {
+                if (candidate.getFluid().equals(fluid.getFluid())) {
+                    existing = candidate;
+                    break;
+                }
+            }
+            if (existing == null) {
+                merged.add(new PatternFluidStack(fluid.getFluid(), (int) Math.min(Integer.MAX_VALUE, amount)));
+            } else {
+                existing.addAmount((int) Math.min(Integer.MAX_VALUE - existing.getAmount(), amount));
+            }
+        }
+        return merged;
     }
 
     private List<ItemIdentifierStack> getSolidIngredients(List<IPatternStack> ingredients) {
@@ -273,12 +365,15 @@ class AdjacentInventoryHandler {
         return low;
     }
 
+    /**
+     * The target inventory as seen from the insertion side, so capacity checks see the same slots the insert uses.
+     */
     private IInventory getInsertableInventory(AdjacentTile connected) {
         IInventory inventory = (IInventory) connected.tile;
         if (inventory instanceof net.minecraft.inventory.ISidedInventory) {
             return new SidedInventoryMinecraftAdapter(
                     (net.minecraft.inventory.ISidedInventory) inventory,
-                    connected.orientation.getOpposite(),
+                    module.getInsertionOrientation(connected),
                     false);
         }
         return inventory;
@@ -398,12 +493,13 @@ class AdjacentInventoryHandler {
                     inserted);
             return inserted;
         }
-        ITransactor transactor = InventoryHelper.getTransactorFor(connected.tile, connected.orientation.getOpposite());
+        ForgeDirection side = module.getInsertionOrientation(connected);
+        ITransactor transactor = InventoryHelper.getTransactorFor(connected.tile, side);
         if (transactor == null) {
             module.debug("adjacent item insert failed: no transactor tile=%s item=%s", connected.tile, item);
             return 0;
         }
-        ItemStack added = transactor.add(toInsert, module.getInsertionOrientation(connected), true);
+        ItemStack added = transactor.add(toInsert, side, true);
         int inserted = added != null ? added.stackSize : 0;
         module.debug(
                 "adjacent item inserted tile=%s item=%s amount=%d inserted=%d",
@@ -426,10 +522,7 @@ class AdjacentInventoryHandler {
     }
 
     private ForgeDirection getFluidInsertionOrientation(AdjacentTile connected) {
-        if (module.getUpgradeManager().hasSneakyUpgrade()) {
-            return module.getUpgradeManager().getSneakyOrientation();
-        }
-        return connected.orientation.getOpposite();
+        return module.getInsertionOrientation(connected);
     }
 
     /**

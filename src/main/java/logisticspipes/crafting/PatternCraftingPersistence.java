@@ -2,10 +2,10 @@ package logisticspipes.crafting;
 
 import java.util.UUID;
 
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidStack;
 
+import logisticspipes.crafting.patternStack.PatternItemStack;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
 import logisticspipes.interfaces.routing.IProvideFluids;
 import logisticspipes.interfaces.routing.IProvideItems;
@@ -371,7 +371,7 @@ final class PatternCraftingPersistence {
             return false;
         }
         NBTTagCompound stackTag = new NBTTagCompound();
-        stack.makeNormalStack().writeToNBT(stackTag);
+        PatternItemStack.writeItem(stackTag, stack);
         tag.setTag(STACK_TAG, stackTag);
         return true;
     }
@@ -385,11 +385,7 @@ final class PatternCraftingPersistence {
     }
 
     private static ItemIdentifierStack readStack(NBTTagCompound tag) {
-        ItemStack stack = ItemStack.loadItemStackFromNBT(tag.getCompoundTag(STACK_TAG));
-        if (stack == null) {
-            return null;
-        }
-        return ItemIdentifierStack.getFromStack(stack);
+        return PatternItemStack.readItem(tag.getCompoundTag(STACK_TAG));
     }
 
     private static void writeFluid(NBTTagCompound tag, FluidIdentifier fluid, int amount) {

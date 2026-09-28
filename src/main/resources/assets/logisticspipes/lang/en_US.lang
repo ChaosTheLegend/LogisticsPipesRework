@@ -520,7 +520,6 @@ gui.routingstats.exit=Press <ESC> to exit
 gui.satellite.SatelliteID=Satellite ID
 gui.satellite.PatternSatellite=Pattern Satellite
 gui.satellite.Name=Name
-gui.satellite.Save=Save
 
 gui.securitystation.Open=Open
 gui.securitystation.EditTable=Edit Table
@@ -571,6 +570,10 @@ gui.settings.pipefallbackrenderer=Use Fallback Renderer
 gui.settings.piperenderdistance=Max. Distance for new Renderer
 gui.settings.pipecontentrenderdistance=Max. Distance for Pipe Content
 
+gui.pattern.title=Pattern
+gui.pattern.status.ready=Ready: place it in a Pattern Crafting Pipe
+gui.pattern.status.gone=The pattern is no longer in this slot
+gui.patterncraftingtable.title=Pattern Crafting Table
 gui.patterncrafting.title=Pattern Crafting Pipe
 gui.patterncrafting.mode.title=Blocking mode
 gui.patterncrafting.mode.off=No blocking

@@ -8,6 +8,12 @@ import logisticspipes.utils.item.ItemIdentifierStack;
 
 public class PatternItemStack implements IPatternStack {
 
+    /**
+     * Vanilla stores {@code Count} as a byte, so amounts above 127 wrap on save. The real amount is written as an int
+     * next to it and preferred on load.
+     */
+    private static final String AMOUNT_TAG = "lpCount";
+
     private final ItemIdentifierStack stack;
 
     public PatternItemStack(ItemIdentifierStack stack) {
@@ -22,8 +28,30 @@ public class PatternItemStack implements IPatternStack {
     }
 
     public static PatternItemStack readFromNBT(NBTTagCompound tag) {
+        ItemIdentifierStack stack = readItem(tag);
+        return stack == null || stack.getStackSize() <= 0 ? null : new PatternItemStack(stack);
+    }
+
+    /**
+     * Writes an item stack of any amount; see {@link #readItem(NBTTagCompound)}.
+     */
+    public static void writeItem(NBTTagCompound tag, ItemIdentifierStack stack) {
+        stack.makeNormalStack().writeToNBT(tag);
+        tag.setInteger(AMOUNT_TAG, stack.getStackSize());
+    }
+
+    /**
+     * Reads a stack written by {@link #writeItem}, or a plain vanilla stack from older saves.
+     */
+    public static ItemIdentifierStack readItem(NBTTagCompound tag) {
         ItemStack stack = ItemStack.loadItemStackFromNBT(tag);
-        return fromItemStack(stack);
+        if (stack == null) {
+            return null;
+        }
+        if (tag.hasKey(AMOUNT_TAG)) {
+            stack.stackSize = tag.getInteger(AMOUNT_TAG);
+        }
+        return ItemIdentifierStack.getFromStack(stack);
     }
 
     public ItemIdentifierStack getItemIdentifierStack() {
@@ -62,7 +90,7 @@ public class PatternItemStack implements IPatternStack {
 
     @Override
     public void writeToNBT(NBTTagCompound tag) {
-        makePatternStack().writeToNBT(tag);
+        writeItem(tag, stack);
         tag.setString(TYPE_TAG, TYPE_SOLID);
     }
 

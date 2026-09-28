@@ -15,16 +15,17 @@ import codechicken.nei.recipe.IRecipeHandler;
 import logisticspipes.nei.PatternCraftingRecipeTransfer;
 
 /**
- * Container of the pattern crafting pipe GUI. Implementing {@link INEIRecipeTransfer} lets ModularUI route NEI's recipe
- * transfer ("+" button with shift) of every recipe type to the selected pattern.
+ * Container of the pattern editor GUIs (pattern crafting pipe and handheld pattern). Implementing
+ * {@link INEIRecipeTransfer} lets ModularUI route NEI's recipe transfer ("+" button with shift) of every recipe type to
+ * the selected pattern.
  * <p>
  * The NEI logic lives in {@link PatternCraftingRecipeTransfer}, which is only loaded on the client.
  */
 public class PatternCraftingContainer extends ModularContainer implements INEIRecipeTransfer<GuiContainer> {
 
-    private final PatternCraftingSyncHandler syncHandler;
+    private final PatternEditorSyncHandler syncHandler;
 
-    public PatternCraftingContainer(PatternCraftingSyncHandler syncHandler) {
+    public PatternCraftingContainer(PatternEditorSyncHandler syncHandler) {
         this.syncHandler = syncHandler;
     }
 
@@ -32,7 +33,7 @@ public class PatternCraftingContainer extends ModularContainer implements INEIRe
      * Container factory for {@code UISettings#customContainer}. Kept here so GUI code never references this class
      * directly: {@link INEIRecipeTransfer} uses client-only classes and must not be loaded on a dedicated server.
      */
-    public static Supplier<ModularContainer> supplier(PatternCraftingSyncHandler syncHandler) {
+    public static Supplier<ModularContainer> supplier(PatternEditorSyncHandler syncHandler) {
         return () -> new PatternCraftingContainer(syncHandler);
     }
 
