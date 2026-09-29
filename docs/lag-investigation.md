@@ -160,3 +160,57 @@ This comes from upstream design; this branch didn't introduce it. What the branc
 - Add hysteresis to the 48-block switch.
 - Remove client routers when their tile is invalidated.
 - Keep a registry of the HUD pipes nearby.
+
+## 4. all pipes consume 20-50 us per tick even when idle
+
+even when idle, pipes often cost 20-50 us per tick just to exist/update, even transport pipes, this needs to be investigated
+
+**Cause (found 2026-09-29): debug mode was hard-coded on.** Fixed in code, not yet measured in game.
+- `LPConstants.DEBUG` had been set to `true` in commit `1059c93e` ("crafting rework wip"). Before that it read the
+  `logisticspipes.enableDebug` system property.
+- With debug on, `LogisticsTileGenericPipe.updateEntity` builds two trace entries per pipe per tick:
+  - `StackTraceUtil.addSuperTraceInformation` and `addTraceInformation`;
+  - each one calls `Thread.currentThread().getStackTrace()`, which walks the whole server call stack (tens of µs from
+    inside a tile tick);
+  - plus string building and a synchronized map.
+- That explains why every pipe, including plain transport pipes, costs 20–50 µs even when idle, and why the cost scales
+  with the pipe count.
+- Debug mode also:
+  - lets any player use `PowerJunctionCheatPacket` (free power) and `/lp debug`;
+  - turns on `TOOLTIP_INFO`;
+  - adds stack walks and logging in many other places (`ClientRouter`, `JunctionRouter.update`, GUI providers, packet
+    handling).
+- **Fix:** `DEBUG = Boolean.getBoolean("logisticspipes.enableDebug")` again. For a debug session, add
+  `-Dlogisticspipes.enableDebug=true` to the run configuration's JVM arguments. At scale, keep in mind debug mode costs
+  this much per pipe.
+
+**Also fixed: the power check polled by every routed pipe.**
+- `checkTexturePowered` runs `canUseEnergy(1)` every 10 ticks on every routed pipe. That goes through
+  `JunctionRouter.powerView()`, which did one-to-many route lookups (key allocation, cache lookup and validation for
+  each power junction) and array comparisons on every call.
+- At 50k pipes that is about 5,000 rebuilds per tick.
+- The view is now reused while the graph snapshot is the same object and the pipe's own power lists haven't changed. Routes
+  to power junctions and their data can only change with a new snapshot.
+
+**What's left per idle pipe, with debug off** (from reading the code; each item is well under 1 µs unless stated):
+- *Tile* (`LogisticsTileGenericPipe.updateEntity`):
+  - `tilePart.updateEntity_LP()` runs the embedded BuildCraft pipe: gates, pluggables and 6 side lookups. It's cheap
+    without pluggables.
+  - `bcPlugableState.isDirty()` serializes the BuildCraft pluggable state into a buffer and compares it every tick
+    (synchronized). It goes away with the BC support (design doc: only LP pipes).
+  - `renderController.onUpdate()` makes two iterator allocations on empty laser maps.
+- *Transport* (`PipeTransportLogistics.updateEntity`): `moveSolids` runs `LPItemList.flush()` (three passes over empty
+  sets plus iterator allocations), then `tickClumps` and `_itemBuffer.sendUpdateToWaters()`.
+- *Routed pipes* also run:
+  - `debug.tick()`, `spawnParticleTick()` and `JunctionRouter.update()` (queue poll, interest countdown);
+  - `securityTick()`, `throttledUpdateEntity()`, `enabledUpdateEntity()` and the module tick.
+- *Amortized, not per tick:*
+  - a full corridor re-scan every `LOGISTICS_DETECTION_FREQUENCY` (600) ticks per pipe, about 83 scans per tick at
+    50k pipes;
+  - `updateInterests` every 20 ticks, which calls `getSpecificInterests()`. Some pipes rebuild sets in it; the pattern
+    crafting pipe parses pattern NBT (`pattern-crafting.md` F5).
+
+Possible follow-ups if spark still shows a per-pipe floor:
+- Skip the BC tile part and `isDirty` when the pipe has no pluggables.
+- Stop ticking plain transport pipes that hold no items (they'd need a wake-up when items enter).
+- Spread or shorten the periodic corridor re-scan.

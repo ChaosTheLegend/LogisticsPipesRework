@@ -453,6 +453,15 @@ public class PipeTransportLogistics {
         if (graph.hopStillValid(path[0]) == null) {
             return false;
         }
+        if (ClumpTransit.isBroken(path[0], now())) {
+            // the corridor lost a pipe and the router hasn't re-scanned it yet: wait instead of crossing the gap
+            _itemBuffer.add(
+                    new Triplet<>(
+                            item.getItemIdentifierStack(),
+                            new Pair<>(_bufferTimeOut, item.getBufferCounter()),
+                            item));
+            return true;
+        }
         return sendAlong(item, path, 0, item.input, graph);
     }
 
@@ -493,14 +502,90 @@ public class PipeTransportLogistics {
         clump.closed = false;
         clump.travelDirection = ForgeDirection.getOrientation(edge.travelPath[edge.travelPath.length - 1]);
         clump.departTick = now;
-        clump.arrivalTick = now + ItemClump.travelTicks(edge.travelPath.length, clump.speed);
+        int ticks = ItemClump.travelTicks(edge.travelPath.length, clump.speed);
+        clump.arrivalTick = now + ticks;
+        clump.edge = edge;
+        clump.srcX = container.xCoord;
+        clump.srcY = container.yCoord;
+        clump.srcZ = container.zCoord;
+        clump.returning = false;
+        clump.startPos = 0;
+        clump.ticksPerPipe = (float) ticks / edge.travelPath.length;
         target.receiveClump(clump);
+        ClumpTransit.register(clump);
         if (chunk != null) {
             chunk.isModified = true;
         }
         if (!getPipe().isOpaque()) {
-            sendClumpPacket(clump, edge, input, target);
+            sendClumpPacket(clump, container, edge.travelPath, input, target.container);
         }
+    }
+
+    /**
+     * A pipe at index {@code broken} of the corridor {@code clump} is on (held by this pipe) was removed. Behind the
+     * clump nothing happens, under it the items drop, ahead of it the clump turns back to the junction it left.
+     */
+    void corridorBroken(ItemClump clump, int broken, long now) {
+        byte[] path = clump.edge.travelPath;
+        float position = clump.positionAt(now);
+        int current = ClumpTransit.currentPipe(clump, position);
+        switch (ClumpTransit.onBreak(clump, broken, current)) {
+            case DROP:
+                dropClump(clump, ClumpTransit.pipeAt(clump.srcX, clump.srcY, clump.srcZ, path, current));
+                break;
+            case TURN_BACK:
+                turnBack(clump, position, current, now);
+                break;
+            case FINISH:
+            default:
+                break;
+        }
+    }
+
+    /** Send {@code clump} back along its corridor from {@code position} to the junction it left. */
+    private void turnBack(ItemClump clump, float position, int current, long now) {
+        byte[] path = clump.edge.travelPath;
+        int[] here = ClumpTransit.pipeAt(clump.srcX, clump.srcY, clump.srcZ, path, current);
+        TileEntity tile = getWorld().getTileEntity(clump.srcX, clump.srcY, clump.srcZ);
+        PipeTransportLogistics source = tile instanceof LogisticsTileGenericPipe && !tile.isInvalid()
+                && ((LogisticsTileGenericPipe) tile).pipe != null ? ((LogisticsTileGenericPipe) tile).pipe.transport
+                        : null;
+        if (source == null || !source.isRouted) {
+            dropClump(clump, here);
+            return;
+        }
+        incomingClumps.remove(clump);
+        ClumpTransit.unregister(clump);
+        clump.closed = true; // nothing joins a clump going back
+        clump.path = null; // routed again from scratch when it gets there
+        clump.returning = true;
+        clump.startPos = position;
+        clump.departTick = now;
+        clump.arrivalTick = now + Math.max(1, (int) Math.ceil(position * clump.ticksPerPipe));
+        clump.travelDirection = ForgeDirection.getOrientation(path[0]).getOpposite();
+        source.receiveClump(clump);
+        ClumpTransit.register(clump);
+
+        TileEntity at = getWorld().getTileEntity(here[0], here[1], here[2]);
+        if (current > 0 && at instanceof LogisticsTileGenericPipe) {
+            byte[] back = new byte[current];
+            for (int i = 0; i < current; i++) {
+                back[i] = (byte) ForgeDirection.getOrientation(path[current - 1 - i]).getOpposite().ordinal();
+            }
+            sendClumpPacket(clump, at, back, ForgeDirection.getOrientation(path[current - 1]), tile);
+        }
+    }
+
+    /** Drop the items of {@code clump} at block {@code pos}, as if they had been inside that pipe. */
+    private void dropClump(ItemClump clump, int[] pos) {
+        incomingClumps.remove(clump);
+        ClumpTransit.unregister(clump);
+        clump.closed = true;
+        for (LPTravelingItemServer item : clump.items) {
+            MainProxy.dropItems(getWorld(), item.getItemIdentifierStack().makeNormalStack(), pos[0], pos[1], pos[2]);
+            item.itemWasLost();
+        }
+        clump.items.clear();
     }
 
     /** The loaded pipe transport of the junction {@code edge} leads to. */
@@ -519,6 +604,7 @@ public class PipeTransportLogistics {
     }
 
     private void receiveClump(ItemClump clump) {
+        clump.holder = this;
         incomingClumps.add(clump);
         if (chunk != null) {
             chunk.isModified = true;
@@ -540,6 +626,7 @@ public class PipeTransportLogistics {
         while (!incomingClumps.isEmpty() && incomingClumps.peek().arrivalTick <= now) {
             ItemClump clump = incomingClumps.poll();
             clump.closed = true;
+            ClumpTransit.unregister(clump);
             clumpArrived(clump);
         }
     }
@@ -621,11 +708,14 @@ public class PipeTransportLogistics {
                 || !SimpleServiceLocator.routerManager.isRouterUnsafe(clump.destination, false)) {
             return null;
         }
-        return graph.hopStillValid(next) == null ? null : next;
+        return graph.hopStillValid(next) == null || ClumpTransit.isBroken(next, now()) ? null : next;
     }
 
-    private void sendClumpPacket(ItemClump clump, CorridorEdge edge, ForgeDirection input,
-            PipeTransportLogistics target) {
+    /**
+     * Tell the players near either end that {@code clump} leaves the pipe {@code from} along {@code path} (the exit
+     * taken at each pipe, starting at {@code from}) towards {@code to}.
+     */
+    private void sendClumpPacket(ItemClump clump, TileEntity from, byte[] path, ForgeDirection input, TileEntity to) {
         World world = getWorld();
         int range = CLUMP_VIEW_DISTANCE * CLUMP_VIEW_DISTANCE;
         ItemClumpPacket packet = null;
@@ -634,7 +724,7 @@ public class PipeTransportLogistics {
                 continue;
             }
             EntityPlayer player = (EntityPlayer) o;
-            if (distanceSq(player, container) > range && distanceSq(player, target.container) > range) {
+            if (distanceSq(player, from) > range && distanceSq(player, to) > range) {
                 continue;
             }
             if (packet == null) {
@@ -644,8 +734,8 @@ public class PipeTransportLogistics {
                     stacks[i] = clump.items.get(i).getItemIdentifierStack();
                 }
                 packet = PacketHandler.getPacket(ItemClumpPacket.class).setTravelId(clump.id).setSpeed(clump.speed)
-                        .setInput(input).setPath(edge.travelPath).setStacks(stacks);
-                packet.setTilePos(container);
+                        .setInput(input).setPath(path).setStacks(stacks);
+                packet.setTilePos(from);
             }
             MainProxy.sendPacketToPlayer(packet, player);
         }
@@ -695,6 +785,7 @@ public class PipeTransportLogistics {
     public void onChunkUnload() {
         for (ItemClump clump : incomingClumps) {
             clump.closed = true;
+            ClumpTransit.unregister(clump); // saved without its path; routed again when it arrives after the reload
         }
     }
 
@@ -1161,6 +1252,7 @@ public class PipeTransportLogistics {
             }
             for (ItemClump clump : incomingClumps) {
                 clump.closed = true;
+                ClumpTransit.unregister(clump);
                 for (LPTravelingItemServer item : clump.items) {
                     list.add(item.getItemIdentifierStack().makeNormalStack());
                     item.itemWasLost();

@@ -41,6 +41,28 @@ public final class ItemClump {
     /** Set once the holder unloaded or took the items in: the clump must not take new items any more. */
     boolean closed;
 
+    /** Corridor the clump is on now (forwards or back); {@code null} for clumps restored from NBT. */
+    CorridorEdge edge;
+    /** Position of the junction {@link #edge} starts at, pipe 0 of its {@link CorridorEdge#travelPath}. */
+    int srcX, srcY, srcZ;
+    /** Going back to the junction at pipe 0 because the corridor broke ahead of it. */
+    boolean returning;
+    /** Position along {@link #edge} (in pipes from its start) at {@link #departTick}. */
+    float startPos;
+    float ticksPerPipe;
+    /** The pipe transport holding this clump in its incoming queue. */
+    PipeTransportLogistics holder;
+    /** Chunk keys this clump is indexed under in {@link ClumpTransit}. */
+    long[] indexedChunks;
+
+    /**
+     * Position along {@link #edge} at {@code now}, in pipes from its start: pipe {@code i} covers {@code [i, i + 1)}.
+     */
+    float positionAt(long now) {
+        float moved = (now - departTick) / ticksPerPipe;
+        return returning ? Math.max(0, startPos - moved) : Math.min(edge.travelPath.length, startPos + moved);
+    }
+
     ItemClump(int id, int destination, TransportMode mode, float speed) {
         this.id = id;
         this.destination = destination;

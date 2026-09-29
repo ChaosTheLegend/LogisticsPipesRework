@@ -933,6 +933,8 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
      */
     private static final class PowerView {
 
+        /** Graph snapshot the view was built or last confirmed on; routes to power junctions only change with it. */
+        volatile NetworkGraph graph;
         final List<JunctionId> targets;
         final RouteCacheEntry[] entries;
         final Object[] data;
@@ -959,6 +961,13 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
     private PowerView powerView() {
         ensureConnectionsFresh();
         NetworkGraph graph = LPJunctionNetwork.writer().graph();
+        PowerView last = powerView;
+        if (last != null && last.graph == graph
+                && last.ownPower == _powerAdjacent
+                && last.ownSubSystemPower == _subSystemPowerAdjacent) {
+            // every pipe polls this every 10 ticks: skip the route lookups while nothing in the graph changed
+            return last;
+        }
         List<JunctionId> targets = graph.dataJunctionsInComponentOf(junctionId);
         Map<JunctionId, RouteCacheEntry> routes = targets.isEmpty() || destroied ? Collections.emptyMap()
                 : LPJunctionNetwork.engine().findRoutesToTargets(junctionId, new java.util.LinkedHashSet<>(targets));
@@ -975,6 +984,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                 && cached.ownSubSystemPower == _subSystemPowerAdjacent
                 && sameElements(cached.entries, entries)
                 && sameElements(cached.data, data)) {
+            cached.graph = graph;
             return cached;
         }
 
@@ -1017,6 +1027,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                 _subSystemPowerAdjacent,
                 Collections.unmodifiableList(powerTable),
                 Collections.unmodifiableList(subPowerTable));
+        view.graph = graph;
         powerView = view;
         return view;
     }

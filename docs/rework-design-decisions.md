@@ -16,6 +16,7 @@
 - Adv. satellite upgrade - remove, works by default
 - Crafting monitor upgrade - can now be applied to request pipes, request table and supplier pipes, allows players to watch pending crafting requests, the number of concurrent requests are limited per pipe: supplier - 1 crafting request, request pipe mk1 - 2 requests, request pipe mk2 - 4 requests, request table - 6
 - Crafting upgrade (new) - allows suppliers to place crafting requests (currently this behaviour is enabled by default)
+- opaque upgrade - remove, add client side config option to disable item rendering, which will just disable client router for item animations, since server already teleport items
 
 ## Modules
 - Many modules (extractor, itemsink) are duplicates of each other with upgraded functionality, remove duplicate modules, replace them with upgrades

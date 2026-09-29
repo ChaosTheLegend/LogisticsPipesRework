@@ -14,7 +14,15 @@ the pipe-by-pipe directions of the corridor, and animates the items itself.
 
 ## Decisions (user, 2026-09-29)
 
-- **A target pipe breaks while clumps are heading to it:** its incoming clumps drop at that pipe, as if they were inside it.
+- **A pipe breaks under a clump in flight** (superseded the first "drop at the target pipe" rule). A clump's position is
+  known from time, as `pipe index = elapsed / ticks per pipe` along the corridor it is on. Compared with the broken pipe:
+  - **behind** the clump: the clump finishes its route;
+  - **the pipe it is in right now**: its items drop there;
+  - **ahead** of it (including the target junction): the clump turns back to the junction it left and is routed again
+    there. If that junction is gone or unloaded, the items drop where the clump is.
+  - A clump already turning back that meets another break ahead drops its items where it is, instead of bouncing again.
+  - Corridors through the broken pipe are flagged broken until they are re-scanned. Items that would depart along one
+    wait in the pipe's retry buffer instead of teleporting through the gap.
 - **Clumping:** there is a short gather window. An item can join a clump that left the same junction with the same key up
   to `itemClumpGatherTicks` ticks earlier (config, default 5). A late joiner arrives up to that many ticks early. Clumps
   that meet at a junction in the same tick merge the same way.
@@ -97,7 +105,12 @@ Those decisions take precedence over this doc. What they mean for transport:
   On the fast path it updates the stats, the distance tracker, `resetDelay` and `readjustSpeed` (speed and power) per
   item, and departs to the next junction. Otherwise every item goes through `injectItem` as if it had just entered the
   pipe: the full `RouteLayer` runs and handles delivery, rerouting and drops.
-- **Removal:** `dropContents` includes the incoming clumps. Their items drop, and the destination gets `itemWasLost`.
+- **Pipe removal** (`LogisticsBlockGenericPipe.removePipe`, before the tile goes) calls `ClumpTransit.onPipeRemoved`:
+  - `ClumpTransit` indexes in-flight clumps by the chunks of their corridor. For each clump whose corridor goes through
+    the removed pipe, it applies the break rule above, finding the pipe's index from the clump's own recorded path and
+    source position.
+  - It also flags the graph's corridors through that pipe (`isBroken`; cleared by a new edge version, or after 100 ticks).
+  - `dropContents` still drops whatever is left in `incoming`, which is only clumps restored from NBT (they have no path).
 - **Chunk unload:** incoming clumps are flagged detached, so the source's gather map won't add to a clump that is now on
   disk.
 - The final pipe → inventory step, drops, and exits into foreign tiles (BC/TD pipes, special connections) keep the old
@@ -119,12 +132,13 @@ Those decisions take precedence over this doc. What they mean for transport:
 
 ## Status (2026-09-29)
 
-Phase 1 is implemented as described above. It compiles and the unit tests pass (`TravelPathTest` is new and covers
-graph merges, versions and `hopStillValid`). **It has not been run in game yet.** Check these in game:
+Phase 1 is implemented as described above. It compiles and the unit tests pass (`TravelPathTest` covers graph merges, versions
+and `hopStillValid`; `ClumpBreakTest` covers the break rule). **It has not been run in game yet.** Check these in game:
 
 - [ ] Items reach chests along a line of routed pipes, and along a corridor of basic transport pipes with branches.
 - [ ] The client animation follows the corridor, shows up to 3 stacks per clump, and doesn't flicker at junctions.
-- [ ] Breaking the target pipe while a clump is on its way drops the items there, and crafters re-request them.
+- [ ] Breaking a pipe under a clump: behind it the clump arrives; the pipe it is in drops the items; ahead of it (or the
+      target) the clump goes back to its source and is routed around the gap. Crafters re-request dropped items.
 - [ ] Saving and reloading, and unloading the target chunk mid-flight: the items arrive after the reload.
 - [ ] Speed upgrades still shorten the trip and power is still used. This is the current code; later, speed comes from
       transport controller blocks instead.
@@ -151,7 +165,7 @@ graph merges, versions and `hopStillValid`). **It has not been run in game yet.*
 ## Known behaviour changes
 
 - Items no longer random-walk at branches of plain transport pipes. They follow the corridor the router picked. - needs to be tested, most likely acceptable
-- Breaking a plain pipe in the middle of a corridor doesn't stop clumps already on it; they arrive at the far junction. - needs to be reworked, clumps should either finish their route if the broken pipe is behind their estimated position, or return if it's past it, this shold be managable as broken pipes already notify the neighbouring junctions and routing path is already cached, so it's possible to just compare t of pipe and item
+- ~~Breaking a plain pipe in the middle of a corridor doesn't stop clumps already on it; they arrive at the far junction.~~ Reworked (see Decisions): behind → finish, the current pipe → drop, ahead → return to the source junction.
 - A new, shorter route that appears while a clump is travelling isn't taken until the clump is routed again. - acceptable
 - An item that joins a clump late (gather window) arrives up to `itemClumpGatherTicks` ticks early. - acceptable
 
@@ -166,8 +180,10 @@ earlier session is in the same working tree.
 
 | File | Change |
 |---|---|
-| `transport/ItemClump.java` (new) | Clump data, gather key, travel time, NBT (items + remaining ticks) |
+| `transport/ItemClump.java` (new) | Clump data, gather key, travel time, NBT (items + remaining ticks), current corridor + source position + direction for `positionAt` |
 | `transport/PipeTransportLogistics.java` | `tryDepart` in `injectItem`/`reverseItem`, the "clump transport" section (departure, arrival, fast relay, packets, NBT, chunk unload), clumps in `dropContents`, planned exits on the client |
+| `transport/ClumpTransit.java` (new) | Chunk index of clumps in flight, `onPipeRemoved`, the break rule (`onBreak`), broken-corridor flags |
+| `pipes/basic/LogisticsBlockGenericPipe.java`, `LogisticsPipes.java` | `removePipe` calls `ClumpTransit.onPipeRemoved`; `ClumpTransit.clear()` on server stop |
 | `transport/LPTravelingItem.java` | static `nextId()`, client `extraStacks` + `plannedExits` |
 | `transport/EntrencsTransport`, `TransportInvConnection`, `PipeFluidTransportLogistics` | `supportsFastRelay() = false` |
 | `network/packets/pipe/ItemClumpPacket.java` (new) | S→C hop packet |
@@ -182,6 +198,7 @@ earlier session is in the same working tree.
 | `pipes/basic/LogisticsTileGenericPipe.java` | calls `transport.onChunkUnload()` |
 | `config/Configs.java` | `itemClumpTransport`, `itemClumpGatherTicks` |
 | `src/test/.../TravelPathTest.java` (new) | merge / opaque merge / version bump / `hopStillValid` |
+| `src/test/.../transport/ClumpBreakTest.java` (new) | position from time, the break rule forwards and going back, pipe positions on a path |
 
 **Worth a close look in review**
 - `PipeTransportLogistics.clumpArrived`: the slow path calls `injectItem` for each item, which can depart the items again
@@ -192,6 +209,14 @@ earlier session is in the same working tree.
   item snaps to the new pipe (the old per-pipe packets did the same).
 - Restored clumps (from NBT) have no path and wait at least 20 ticks, so the routers around them are up before routing.
 - `dropContents` calls `itemWasLost` for clump items. Legacy in-pipe items don't, and wait for the 640-tick timeout.
+- Break handling (`corridorBroken` / `turnBack` in `PTL`, `ClumpTransit`):
+  - The position comes from the clump's own recorded corridor and source position, not the current graph, so a
+    corridor that was re-scanned since the clump left is still measured the way the clump travels it.
+  - A clump going back is pathless and closed (nothing joins it). The client gets a reverse path from the pipe it
+    turned in.
+  - While a corridor is flagged broken, `tryDepart` puts items into the pipe's existing retry buffer (`_itemBuffer`,
+    40 ticks) rather than simulating them into the gap. `relayEdge` falls back to routing the items, which then
+    reaches the same buffer.
 
 **Open questions for next session**
 - Phase order: phase 1 of the later phases (skip pass-through junctions) versus routing at the source only once per item

@@ -150,6 +150,7 @@ import logisticspipes.ticks.LPTickHandler;
 import logisticspipes.ticks.QueuedTasks;
 import logisticspipes.ticks.RenderTickHandler;
 import logisticspipes.ticks.ServerPacketBufferHandlerThread;
+import logisticspipes.transport.ClumpTransit;
 import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.InventoryUtilFactory;
 import logisticspipes.utils.RoutedItemHelper;
@@ -606,6 +607,7 @@ public class LogisticsPipes {
         PipeFluidSatellite.cleanup();
         ServerRouter.cleanup();
         LPJunctionNetwork.cleanup();
+        ClumpTransit.clear();
         if (event.getSide().equals(Side.CLIENT)) {
             LogisticsHUDRenderer.instance().clear();
         }
