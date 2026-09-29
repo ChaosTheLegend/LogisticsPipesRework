@@ -686,6 +686,11 @@ public final class JunctionGraphWriter {
         List<Object> filters = new ArrayList<>(an.filters);
         filters.addAll(nb.filters);
         long[] chunks = concatChunks(an.chunks, nb.chunks);
+        byte[] travelPath = null;
+        if (an.travelPath != null && nb.travelPath != null) {
+            travelPath = Arrays.copyOf(an.travelPath, an.travelPath.length + nb.travelPath.length);
+            System.arraycopy(nb.travelPath, 0, travelPath, an.travelPath.length, nb.travelPath.length);
+        }
         EdgeSpec merged = new EdgeSpec(
                 b,
                 an.weight + nb.weight,
@@ -694,7 +699,8 @@ public final class JunctionGraphWriter {
                 an.blockDistance + nb.blockDistance,
                 an.exitSide,
                 nb.insertSide,
-                chunks);
+                chunks,
+                travelPath);
         CorridorEdge direct = na.edgeTo(b);
         boolean keepDirect = direct != null && direct.weight <= merged.weight;
         List<EdgeSpec> specs = new ArrayList<>();

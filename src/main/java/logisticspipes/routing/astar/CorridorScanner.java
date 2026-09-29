@@ -26,6 +26,7 @@ import logisticspipes.interfaces.ISubSystemPowerProvider;
 import logisticspipes.interfaces.routing.IDirectRoutingConnection;
 import logisticspipes.interfaces.routing.IFilter;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.proxy.specialconnection.SpecialPipeConnection.ConnectionInformation;
 import logisticspipes.routing.ExitRoute;
@@ -55,6 +56,12 @@ public final class CorridorScanner {
     private final ArrayList<Long> pathChunks = new ArrayList<>();
     private final IdentityHashMap<ExitRoute, long[]> chunksByRoute = new IdentityHashMap<>();
     private final IdentityHashMap<ExitRoute, Double> metricByRoute = new IdentityHashMap<>();
+    /** Directions taken at each pipe of the current DFS path, parallel to the path itself. */
+    private final ArrayList<Byte> pathDirections = new ArrayList<>();
+    /** How many hops of the current DFS path are not plain LP pipe to LP pipe (special connections, foreign pipes). */
+    private int opaqueHops;
+    private final IdentityHashMap<ExitRoute, byte[]> travelPathByRoute = new IdentityHashMap<>();
+    private final Set<TileEntity> specialTileHops = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
     private int pipesVisited;
 
     public List<Pair<ILogisticsPowerProvider, List<IFilter>>> powerNodes;
@@ -95,6 +102,25 @@ public final class CorridorScanner {
         if (metric != null) {
             metricByRoute.put(route, metric + resistance);
         }
+    }
+
+    /**
+     * Direction taken at each pipe of the corridor behind {@code route}, or {@code null} if items can't skip it as a
+     * scheduled hop (see {@link EdgeSpec#travelPath}).
+     */
+    public byte[] travelPathOf(ExitRoute route) {
+        return travelPathByRoute.get(route);
+    }
+
+    private byte[] currentTravelPath() {
+        if (opaqueHops > 0 || pathDirections.isEmpty()) {
+            return null;
+        }
+        byte[] path = new byte[pathDirections.size()];
+        for (int i = 0; i < path.length; i++) {
+            path[i] = pathDirections.get(i);
+        }
+        return path;
     }
 
     public long[] chunksOf(ExitRoute route) {
@@ -169,6 +195,10 @@ public final class CorridorScanner {
                     distances.size());
             chunksByRoute.put(route, currentPathChunks(startPipe));
             metricByRoute.put(route, Math.max(1, size));
+            byte[] travelPath = currentTravelPath();
+            if (travelPath != null) {
+                travelPathByRoute.put(route, travelPath);
+            }
             foundPipes.put(rp, route);
 
             return foundPipes;
@@ -188,10 +218,12 @@ public final class CorridorScanner {
                 continue;
             }
             distances.put(new LPPosition(startPipe).center(), specialConnection.getDistance());
+            opaqueHops++;
             HashMap<CoreRoutedPipe, ExitRoute> result = getConnectedRoutingPipes(
                     specialConnection.getConnectedPipe(),
                     specialConnection.getConnectionFlags(),
                     specialConnection.getInsertOrientation());
+            opaqueHops--;
             distances.remove(new LPPosition(startPipe).center());
             for (Entry<CoreRoutedPipe, ExitRoute> pipe : result.entrySet()) {
                 pipe.getValue().exitOrientation = specialConnection.getExitOrientation();
@@ -269,6 +301,7 @@ public final class CorridorScanner {
                 if (!list.isEmpty()) {
                     for (TileEntity pipe : list) {
                         connections.add(new Pair<>(pipe, direction));
+                        specialTileHops.add(pipe);
                     }
                     listTileEntity(tile);
                     continue;
@@ -356,14 +389,26 @@ public final class CorridorScanner {
                             }
                             distances.put(pos, currentPipe.getDistance() + info.getLength());
                             pathChunks.add(chunkOf(currentPipe));
+                            opaqueHops++;
                             result.putAll(getConnectedRoutingPipes(info.getPipe(), nextConnectionFlags, direction));
+                            opaqueHops--;
                             pathChunks.remove(pathChunks.size() - 1);
                             distances.remove(pos);
                         }
                     }
                 }
                 if (result == null) {
+                    boolean opaque = isDirectConnection || !(tile instanceof LogisticsTileGenericPipe)
+                            || specialTileHops.contains(tile);
+                    if (opaque) {
+                        opaqueHops++;
+                    }
+                    pathDirections.add((byte) direction.ordinal());
                     result = getConnectedRoutingPipes(currentPipe, nextConnectionFlags, direction);
+                    pathDirections.remove(pathDirections.size() - 1);
+                    if (opaque) {
+                        opaqueHops--;
+                    }
                 }
                 for (Entry<CoreRoutedPipe, ExitRoute> pipeEntry : result.entrySet()) {
                     // Update Result with the direction we took

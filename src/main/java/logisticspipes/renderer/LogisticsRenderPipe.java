@@ -53,6 +53,7 @@ import logisticspipes.renderer.newpipe.LogisticsNewPipeItemBoxRenderer;
 import logisticspipes.renderer.newpipe.LogisticsNewRenderPipe;
 import logisticspipes.renderer.newpipe.VBOList;
 import logisticspipes.transport.LPTravelingItem;
+import logisticspipes.transport.LPTravelingItem.LPTravelingItemClient;
 import logisticspipes.transport.PipeFluidTransportLogistics;
 import logisticspipes.transport.PipeTransportLogistics;
 import logisticspipes.utils.item.ItemIdentifierStack;
@@ -152,36 +153,10 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
                 continue;
             }
 
-            pos.reset(0.5D, 0.5D, 0.5D);
             float fPos = item.getPosition() + item.getSpeed() * partialTickTime;
-            double boxScale = 1;
-
-            if (fPos < 0.5) {
-                if (item.input == ForgeDirection.UNKNOWN) {
-                    continue;
-                }
-                if (!pipe.container.renderState.pipeConnectionMatrix.isConnected(item.input.getOpposite())) {
-                    continue;
-                }
-                pos.moveForward(item.input.getOpposite(), 0.5F - fPos);
-            } else {
-                if (item.output == ForgeDirection.UNKNOWN) {
-                    continue;
-                }
-                if (!pipe.container.renderState.pipeConnectionMatrix.isConnected(item.output)) {
-                    continue;
-                }
-                pos.moveForward(item.output, fPos - 0.5F);
-            }
-            if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.input.getOpposite())) {
-                boxScale = (fPos * (1 - 0.65)) + 0.65;
-            }
-            if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.output)) {
-                boxScale = ((1 - fPos) * (1 - 0.65)) + 0.65;
-            }
-            if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.input.getOpposite())
-                    && pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.output)) {
-                boxScale = 0.65;
+            double boxScale = placeItem(pipe, item, fPos);
+            if (boxScale < 0) {
+                continue;
             }
 
             doRenderItem(
@@ -194,6 +169,32 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
                     boxScale,
                     partialTickTime);
             count++;
+
+            // the rest of a clump trails behind its first stack, inside this pipe only
+            ItemIdentifierStack[] extra = item instanceof LPTravelingItemClient
+                    ? ((LPTravelingItemClient) item).getExtraStacks()
+                    : null;
+            if (extra != null) {
+                for (int i = 0; i < extra.length; i++) {
+                    float trailPos = fPos - CLUMP_SPACING * (i + 1);
+                    if (trailPos < 0 || extra[i] == null) {
+                        break;
+                    }
+                    double trailScale = placeItem(pipe, item, trailPos);
+                    if (trailScale < 0) {
+                        break;
+                    }
+                    doRenderItem(
+                            extra[i],
+                            pipe.container.getWorldObj(),
+                            x + pos.getXD(),
+                            y + pos.getYD(),
+                            z + pos.getZD(),
+                            0.75F,
+                            trailScale,
+                            partialTickTime);
+                }
+            }
         }
         count = 0;
         float dist = 0.135F;
@@ -227,6 +228,47 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
         }
 
         GL11.glPopMatrix();
+    }
+
+    /** Gap between the stacks of a clump, in pipe lengths. */
+    private static final float CLUMP_SPACING = 0.2F;
+
+    /**
+     * Move {@link #pos} to where {@code item} is drawn at {@code fPos} along this pipe. Returns the box scale, or -1 if
+     * the item is not visible there.
+     */
+    private double placeItem(CoreUnroutedPipe pipe, LPTravelingItem item, float fPos) {
+        pos.reset(0.5D, 0.5D, 0.5D);
+        double boxScale = 1;
+
+        if (fPos < 0.5) {
+            if (item.input == ForgeDirection.UNKNOWN) {
+                return -1;
+            }
+            if (!pipe.container.renderState.pipeConnectionMatrix.isConnected(item.input.getOpposite())) {
+                return -1;
+            }
+            pos.moveForward(item.input.getOpposite(), 0.5F - fPos);
+        } else {
+            if (item.output == ForgeDirection.UNKNOWN) {
+                return -1;
+            }
+            if (!pipe.container.renderState.pipeConnectionMatrix.isConnected(item.output)) {
+                return -1;
+            }
+            pos.moveForward(item.output, fPos - 0.5F);
+        }
+        if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.input.getOpposite())) {
+            boxScale = (fPos * (1 - 0.65)) + 0.65;
+        }
+        if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.output)) {
+            boxScale = ((1 - fPos) * (1 - 0.65)) + 0.65;
+        }
+        if (pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.input.getOpposite())
+                && pipe.container.renderState.pipeConnectionMatrix.isTDConnected(item.output)) {
+            boxScale = 0.65;
+        }
+        return boxScale;
     }
 
     public void doRenderItem(ItemIdentifierStack itemIdentifierStack, World worldObj, double x, double y, double z,

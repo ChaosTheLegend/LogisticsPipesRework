@@ -37,3 +37,15 @@ leftovers — each is actively constructed from its module's provider methods.
 | `LogisticsSimpleFilterModule` (abstract base) | ⚠️ n/a | `gui/modules/GuiSimpleFilter.java` — relevant only if a future concrete subclass fails to override it; all current subclasses (Terminus, PassiveSupplier, EnchantmentSinkMK2) do override and are migrated |
 
 _Last verified: 2026-08-06._
+
+## Effect of the rework design (2026-09-29)
+
+Per [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md), every GUI moves to ModularUI, but some of the
+modules above are to be removed rather than migrated:
+- `ModuleCrafter` goes, because crafting modules are replaced by the pattern crafting pipe.
+- Modules that only duplicate another one with more features become upgrades. The design doc names the extractors and
+  item sinks as examples.
+  - Likely candidates: `ModuleExtractor` Mk2/Mk3 and `ModuleAdvancedExtractor` MK2/MK3.
+  - Possibly also the item sink variants such as `ModuleOreDictItemSink`, since the OreDict filter becomes an upgrade.
+  - The final list is settled under "Rethink modules" in `TODO/roadmap.md` 2c. Wait for it before migrating those GUIs.
+- Fluid modules (new) for the fluid chassis will need MUI GUIs from the start.

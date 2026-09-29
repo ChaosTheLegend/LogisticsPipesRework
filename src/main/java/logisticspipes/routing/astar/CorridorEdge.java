@@ -28,6 +28,8 @@ public final class CorridorEdge {
     public final int exitSide;
     public final int insertSide;
     public final long[] chunks;
+    /** See {@link EdgeSpec#travelPath}; {@code null} when items must be simulated along this corridor. */
+    public final byte[] travelPath;
     public final long version;
 
     CorridorEdge(long id, JunctionId from, EdgeSpec spec, long version) {
@@ -41,7 +43,12 @@ public final class CorridorEdge {
         exitSide = spec.exitSide;
         insertSide = spec.insertSide;
         chunks = spec.chunks;
+        travelPath = spec.travelPath;
         this.version = version;
+    }
+
+    public boolean isTeleportable() {
+        return travelPath != null;
     }
 
     /** Edge ids encode the owning junction in the high 32 bits so a snapshot can find an edge without a global map. */
@@ -54,7 +61,7 @@ public final class CorridorEdge {
     }
 
     EdgeSpec toSpec() {
-        return new EdgeSpec(to, weight, flags, filters, blockDistance, exitSide, insertSide, chunks);
+        return new EdgeSpec(to, weight, flags, filters, blockDistance, exitSide, insertSide, chunks, travelPath);
     }
 
     @Override

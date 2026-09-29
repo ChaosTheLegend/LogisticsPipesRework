@@ -18,7 +18,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.PriorityBlockingQueue;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.crash.CrashReportCategory;
@@ -99,6 +98,7 @@ import logisticspipes.proxy.computers.interfaces.SetSourceMod;
 import logisticspipes.proxy.computers.wrapper.CCWrapperInformation.SourceMod;
 import logisticspipes.routing.ExitRoute;
 import logisticspipes.routing.IRouter;
+import logisticspipes.routing.InTransitTracker;
 import logisticspipes.routing.ItemRoutingInformation;
 import logisticspipes.routing.ServerRouter;
 import logisticspipes.routing.astar.InterestRegistry;
@@ -164,9 +164,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
 
     protected RouteLayer _routeLayer;
     protected TransportLayer _transportLayer;
-    protected final PriorityBlockingQueue<ItemRoutingInformation> _inTransitToMe = new PriorityBlockingQueue<>(
-            10,
-            new ItemRoutingInformation.DelayComparator());
+    protected final InTransitTracker _inTransitToMe = new InTransitTracker();
 
     protected UpgradeManager upgradeManager = new UpgradeManager(this);
     protected LogisticsItemOrderManager _orderItemManager = null;
@@ -341,9 +339,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
     }
 
     private void notifyOfSend(ItemRoutingInformation routedItem) {
-        if (!_inTransitToMe.contains(routedItem)) {
-            _inTransitToMe.add(routedItem);
-        }
+        _inTransitToMe.add(routedItem);
         // LogisticsPipes.log.info("Sending: "+routedItem.getIDStack().getItem().getFriendlyName());
     }
 
@@ -356,9 +352,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
     }
 
     private void removeFromInTransit(ItemRoutingInformation routedItem) {
-        while (_inTransitToMe.remove(routedItem)) {
-            // Remove any duplicate queue/send markers that may have been created by older code paths.
-        }
+        _inTransitToMe.remove(routedItem);
     }
 
     // When Recreating the Item from the TE version we have the same hashCode but a different instance so we need to
@@ -460,14 +454,13 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
 
         // remove old items _inTransit -- these should have arrived, but have probably been lost instead. In either
         // case, it will allow a re-send so that another attempt to re-fill the inventory can be made.
-        while (_inTransitToMe.peek() != null && _inTransitToMe.peek().getTickToTimeOut() <= 0) {
-            final ItemRoutingInformation p = _inTransitToMe.poll();
-            if (p != null) {
+        if (isNthTick(20)) {
+            _inTransitToMe.removeTimedOut(p -> {
                 if (LPConstants.DEBUG) {
                     LogisticsPipes.log.info("Timed Out: {} ({})", p.getItem().getFriendlyName(), p.hashCode());
                 }
                 debug.log("Timed Out: %s (%d)", p.getItem().getFriendlyName(), p.hashCode());
-            }
+            });
         }
         // update router before ticking logic/transport
         getRouter().update(
@@ -1450,13 +1443,7 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
 
     @Override
     public int countOnRoute(ItemIdentifier it) {
-        int count = 0;
-        for (ItemRoutingInformation next : _inTransitToMe) {
-            if (next.getItem().getItem().equals(it)) {
-                count += next.getItem().getStackSize();
-            }
-        }
-        return count;
+        return _inTransitToMe.count(it);
     }
 
     @Override

@@ -1,5 +1,9 @@
 # Junction-Graph Routing Engine — Developer Guide
 
+> The rework design choices in [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md) take precedence
+> over this guide: only LP pipes route (no BuildCraft / Thermal Dynamics pipes), and the ISC stays. What that means for
+> the implementation is in `code-review-guide.md` §5.
+
 ## Why this design, in one paragraph
 
 Logistics-pipe networks are, structurally, road/utility networks: a large number of

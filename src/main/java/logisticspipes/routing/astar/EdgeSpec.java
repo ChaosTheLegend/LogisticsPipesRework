@@ -21,9 +21,19 @@ public final class EdgeSpec {
     public final int insertSide;
     /** Chunk keys (see {@link ChunkEdgeIndex#chunkKey}) of every block the corridor passes through. */
     public final long[] chunks;
+    /**
+     * ForgeDirection ordinals of the step taken at each pipe of the corridor, starting with {@link #exitSide}, if items
+     * may skip the corridor as a scheduled hop (only LP pipes, no special connections); {@code null} otherwise.
+     */
+    public final byte[] travelPath;
 
     public EdgeSpec(JunctionId to, double weight, int flags, List<?> filters, int blockDistance, int exitSide,
             int insertSide, long[] chunks) {
+        this(to, weight, flags, filters, blockDistance, exitSide, insertSide, chunks, null);
+    }
+
+    public EdgeSpec(JunctionId to, double weight, int flags, List<?> filters, int blockDistance, int exitSide,
+            int insertSide, long[] chunks, byte[] travelPath) {
         if (weight < 0 || Double.isNaN(weight)) {
             throw new IllegalArgumentException("Corridor weight must be non-negative: " + weight);
         }
@@ -35,6 +45,7 @@ public final class EdgeSpec {
         this.exitSide = exitSide;
         this.insertSide = insertSide;
         this.chunks = chunks == null ? new long[0] : chunks;
+        this.travelPath = travelPath;
     }
 
     public EdgeSpec(JunctionId to, double weight, int flags) {
@@ -48,7 +59,8 @@ public final class EdgeSpec {
                 && e.exitSide == exitSide
                 && e.insertSide == insertSide
                 && e.filters.equals(filters)
-                && java.util.Arrays.equals(e.chunks, chunks);
+                && java.util.Arrays.equals(e.chunks, chunks)
+                && java.util.Arrays.equals(e.travelPath, travelPath);
     }
 
     /**

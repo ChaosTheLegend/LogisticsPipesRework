@@ -387,17 +387,29 @@ Still legacy (no MUI yet): `RequestTableGui`.
 
 ### Known issues:
 
+- Massive FPS lag when loading large pipe networks — _likely cause fixed (2026-09-28): `getOrCreateRouter` scanned every
+  known router for each pipe that loaded, which is O(n²), on the client (`RouterManager`, render thread) and on the server
+  (`JunctionRouterManager`, inside the lock that routing threads take). Both now use a position index. The client router
+  itself is a no-op per tick. Needs an in-game check with a profiler (spark) to confirm nothing else is left._
 - Items get stuck when trying to request crafts for the machines in blocking mode, even when machine is empty
 - Items don't get dropped from the crafting pipe on break
 - Items get teleported to satellite pipes instead of traveling to them when requested
 - Pattern crafting pipe voids excess fluids if there's no storage for them in the network, in this case it should hault, and either continue crafting in non-blocking mode, or error and wait untill there's space available, nothing should be voided
 - ~~satellite name field doesn't update and errors when trying to give it a name (likely permission check fail)~~
 - ~~shift-click transfering items that already present in pattern crafting table doesn't correctly display them in gui, this leads to several bugs, such as wrong crafts and missing items~~
+- tps lag due to massive amounts of items traveling in the pipes - the driving engine must be rewritten to make pipes teleport from junction to junction instead of being simulated in world, as well as be able to clump up into chunks when in pipes, the traveling item visual will be client only and will be callebrated based on the travel delay
+  _Causes: see [lag-investigation.md](lag-investigation.md) §1. Rewrite in progress: [item-transport-rewrite.md](item-transport-rewrite.md) (phase 1 in code, not tested in game yet)._
+- fps lag due to massive amount of particles - disable them, use changing textures/hud glasses status instead
+  _Causes: see [lag-investigation.md](lag-investigation.md) §2._
+- large fps lag when near a lot of pipes, cause unknown
+  _Causes: see [lag-investigation.md](lag-investigation.md) §3._
 
 ### Suggestions
 
 - Items get buffered in the pipe before craft execution by default -> make this into a buffer upgrade
 - Eventually implement buffer upgrade for supplier pipe as well
+  _Decided in [rework-design-decisions.md](rework-design-decisions.md): **Buffer upgrade** (new), holds 1 requested set in
+  the pipe and sends it without travel time, for supplier and crafting pipes._
 - When copying recipe from nei, multiple stacks get compressed into one and then if the amount >127 doesn't add the item. make the nei import add stacks as is without compressing them, and then allow player to combine them manually (either by hand, or with "combine" button)
 - request relay - AE2 integration. Add a special block that connect to both me and LP network, allow it to request items from LP network through AE net and supply items from AE network to LP.
 - Crafting request improvement. It will be staged:
@@ -407,6 +419,10 @@ Still legacy (no MUI yet): `RequestTableGui`.
 4) deliver output - send the output to the requester and show it
 - Add crafting monitor upgrade to supplier pipes
 - Add crafting requests for suppliers as a toggleable option (possible upgrade?)
+  _Decided: the **crafting monitor upgrade** goes on supplier pipes, request pipes and the request table, with a limit on
+  concurrent monitored requests (supplier 1, request pipe mk1 2, mk2 4, request table 6). With the upgrade you can inspect
+  the whole request tree; without it you only see that crafts were queued. The new **crafting upgrade** lets suppliers
+  place crafting requests; today suppliers do that by default._
 
 ### Minors
 
@@ -414,6 +430,24 @@ Still legacy (no MUI yet): `RequestTableGui`.
 
 ### Decisions
 
+- **The rework design is in [rework-design-decisions.md](rework-design-decisions.md)** and takes precedence over this doc.
+  What it means for pattern crafting:
+  - The old crafting modules (`ModuleCrafter`, the legacy crafting pipe) are removed; the pattern crafting pipe and patterns
+    replace them. Issues that only occur when an old crafter shares a request node with a staged promise (C4, part of C3)
+    stop mattering once it is removed.
+  - OreDict and NBT options in crafting pipes are unlocked by the new **OreDict filter** and **NBT filter** upgrades. Today
+    they are per-pattern flags (`patternOreDictSubstitution`, `patternIgnoreNbt`) that anyone can set.
+  - The advanced satellite upgrade is removed; its behaviour is on by default.
+  - Speed upgrades no longer change travel speed; transport controller blocks do that. Speed upgrades speed up the
+    pattern crafting table (its 4 upgrade slots already take speed upgrades) and extraction.
+  - The buffer upgrade replaces the always-on ingredient buffering, and is also the prestock. Without it, pipes
+    re-request items every time.
+  - Items only teleport pipe to pipe. The known issue "items get teleported to satellite pipes" is about satellites
+    inserting straight into their machine (`insertPatternInput`) instead of the items being routed to them, not about the
+    transport rewrite.
+  - Upgrades go in without a pipe controller through the side upgrade GUI, at most 4.
+  - The **Legacy Wrench** is for debugging only and isn't craftable. It does not bring back the legacy GUIs deleted in
+    §8.7; it only opens legacy GUIs that still exist. Deleting legacy GUIs once MUI covers them stays the rule.
 - **Legacy GUIs are deprecated** (prototyping only) and will be deleted. MUI migration is the priority; don't spend
   effort keeping legacy GUI paths compatible. Bugs that exist only in legacy paths → delete the path once MUI covers it.
 - In new MUIs add an upgrade side gui with 4 slots for upgrades. this includes pattern crafting table

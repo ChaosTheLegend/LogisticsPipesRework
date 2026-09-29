@@ -78,6 +78,28 @@ public final class NetworkGraph {
         return node(id) != null;
     }
 
+    public boolean isActive(JunctionId id) {
+        return isActive(id.index());
+    }
+
+    /**
+     * The current version of a corridor recorded on an earlier snapshot, if items routed along it can still take it as
+     * a scheduled hop: same ends, exit side, filters and route flag, still teleportable, and leading to an active
+     * junction. {@code null} otherwise.
+     */
+    public CorridorEdge hopStillValid(CorridorEdge recorded) {
+        CorridorEdge now = edge(recorded.id);
+        if (now == null || now.travelPath == null
+                || !now.to.equals(recorded.to)
+                || now.exitSide != recorded.exitSide
+                || (now.flags & RoutingFlags.CAN_ROUTE_TO) == 0
+                || !now.filters.equals(recorded.filters)
+                || !isActive(now.to.index())) {
+            return null;
+        }
+        return now;
+    }
+
     boolean isActive(int index) {
         JunctionNode n = node(index);
         return n != null && n.active;

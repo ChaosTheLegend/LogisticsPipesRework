@@ -81,6 +81,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
     public Map<IRouter, ExitRoute> _adjacentRouter_Old = new HashMap<>();
     private Map<IRouter, long[]> _adjacentChunks = new HashMap<>();
     private Map<IRouter, Double> _adjacentMetric = new HashMap<>();
+    private Map<IRouter, byte[]> _adjacentTravelPaths = new HashMap<>();
     public List<Pair<ILogisticsPowerProvider, List<IFilter>>> _powerAdjacent = new ArrayList<>();
     public List<Pair<ISubSystemPowerProvider, List<IFilter>>> _subSystemPowerAdjacent = new ArrayList<>();
     private boolean hadPowerData = false;
@@ -371,6 +372,17 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                 break;
             }
         }
+        if (!adjacentChanged) {
+            // ExitRoute.equals ignores the pipes a corridor runs through, e.g. a plain pipe swapped for a foreign one
+            for (Entry<CoreRoutedPipe, ExitRoute> pipe : adjacent.entrySet()) {
+                if (!java.util.Arrays.equals(
+                        finder.travelPathOf(pipe.getValue()),
+                        _adjacentTravelPaths.get(pipe.getKey().getRouter()))) {
+                    adjacentChanged = true;
+                    break;
+                }
+            }
+        }
 
         if (!oldTouchedPipes.equals(finder.touchedPipes)) {
             CacheHolder.clearCache(oldTouchedPipes);
@@ -385,6 +397,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
             HashMap<IRouter, ExitRoute> adjacentRouter = new HashMap<>();
             HashMap<IRouter, long[]> adjacentChunks = new HashMap<>();
             HashMap<IRouter, Double> adjacentMetric = new HashMap<>();
+            HashMap<IRouter, byte[]> adjacentTravelPaths = new HashMap<>();
             EnumSet<ForgeDirection> routedexits = EnumSet.noneOf(ForgeDirection.class);
             EnumMap<ForgeDirection, Integer> subpowerexits = new EnumMap<>(ForgeDirection.class);
             for (Entry<CoreRoutedPipe, ExitRoute> pipe : adjacent.entrySet()) {
@@ -392,6 +405,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                 adjacentRouter.put(router, pipe.getValue());
                 adjacentChunks.put(router, finder.chunksOf(pipe.getValue()));
                 adjacentMetric.put(router, finder.metricOf(pipe.getValue()));
+                adjacentTravelPaths.put(router, finder.travelPathOf(pipe.getValue()));
                 if ((pipe.getValue().connectionDetails.contains(PipeRoutingConnectionType.canRouteTo)
                         || pipe.getValue().connectionDetails.contains(PipeRoutingConnectionType.canRequestFrom)
                                 && !routedexits.contains(pipe.getValue().exitOrientation))) {
@@ -412,6 +426,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
             _adjacentRouter = Collections.unmodifiableMap(adjacentRouter);
             _adjacentChunks = adjacentChunks;
             _adjacentMetric = adjacentMetric;
+            _adjacentTravelPaths = adjacentTravelPaths;
             _powerAdjacent = power != null ? Collections.unmodifiableList(power) : null;
             _subSystemPowerAdjacent = subSystemPower != null ? Collections.unmodifiableList(subSystemPower) : null;
             _routedExits = routedexits;
@@ -486,7 +501,8 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                             exit.blockDistance,
                             exit.exitOrientation.ordinal(),
                             exit.insertOrientation.ordinal(),
-                            _adjacentChunks.get(entry.getKey())));
+                            _adjacentChunks.get(entry.getKey()),
+                            _adjacentTravelPaths.get(entry.getKey())));
         }
         JunctionGraphWriter writer = LPJunctionNetwork.writer();
         writer.setEdges(junctionId, specs);
@@ -644,25 +660,46 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
 
     // ------------------------------------------------------------------ route queries
 
-    /** Converted routes (old {@code ExitRoute} form) of a pair result, built once per cache entry. */
+    /** Converted routes (old {@code ExitRoute} form) of a pair result and the labels they came from. */
+    private static final class PairView {
+
+        static final PairView EMPTY = new PairView(NO_ROUTES, new RouteLabel[0]);
+
+        final ExitRoute[] routes;
+        final RouteLabel[] labels;
+
+        PairView(ExitRoute[] routes, RouteLabel[] labels) {
+            this.routes = routes;
+            this.labels = labels;
+        }
+    }
+
     private ExitRoute[] exitRoutes(RouteCacheEntry entry) {
+        return pairView(entry).routes;
+    }
+
+    /** Built once per cache entry. */
+    private PairView pairView(RouteCacheEntry entry) {
         Object view = entry.getAdapterView();
-        if (view instanceof ExitRoute[]) {
-            return (ExitRoute[]) view;
+        if (view instanceof PairView) {
+            return (PairView) view;
         }
         NetworkGraph graph = entry.computedOn();
         List<ExitRoute> list = new ArrayList<>(entry.routes.size());
+        List<RouteLabel> labels = new ArrayList<>(entry.routes.size());
         for (RouteLabel label : entry.routes) {
             if ((label.newFlags & ROUTE_FLAGS) != 0) {
                 ExitRoute e = toExitRoute(graph, label);
                 if (e != null) {
                     list.add(e);
+                    labels.add(label);
                 }
             }
         }
-        ExitRoute[] routes = list.isEmpty() ? NO_ROUTES : list.toArray(new ExitRoute[0]);
-        entry.setAdapterView(routes);
-        return routes;
+        PairView result = list.isEmpty() ? PairView.EMPTY
+                : new PairView(list.toArray(new ExitRoute[0]), labels.toArray(new RouteLabel[0]));
+        entry.setAdapterView(result);
+        return result;
     }
 
     private ExitRoute toExitRoute(NetworkGraph graph, RouteLabel label) {
@@ -685,10 +722,14 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
     }
 
     private ExitRoute[] routesTo(int destination) {
+        return pairTo(destination).routes;
+    }
+
+    private PairView pairTo(int destination) {
         if (destination <= 0 || destroied) {
-            return NO_ROUTES;
+            return PairView.EMPTY;
         }
-        return exitRoutes(LPJunctionNetwork.engine().findRoute(junctionId, JunctionId.of(destination)));
+        return pairView(LPJunctionNetwork.engine().findRoute(junctionId, JunctionId.of(destination)));
     }
 
     private static boolean passesFilters(ExitRoute exit, boolean active, ItemIdentifier type) {
@@ -713,12 +754,33 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
         if (id == simpleID) {
             return selfRoute;
         }
-        for (ExitRoute exit : routesTo(id)) {
-            if (exit.containsFlag(PipeRoutingConnectionType.canRouteTo) && passesFilters(exit, active, type)) {
-                return exit;
+        ExitRoute[] routes = routesTo(id);
+        int i = pickRoute(routes, active, type);
+        return i < 0 ? null : routes[i];
+    }
+
+    private static int pickRoute(ExitRoute[] routes, boolean active, ItemIdentifier type) {
+        for (int i = 0; i < routes.length; i++) {
+            if (routes[i].containsFlag(PipeRoutingConnectionType.canRouteTo)
+                    && passesFilters(routes[i], active, type)) {
+                return i;
             }
         }
-        return null;
+        return -1;
+    }
+
+    /**
+     * The route {@link #getExitFor} picks, as the whole corridor sequence from this junction. {@code null} when there
+     * is none or {@code id} is this junction.
+     */
+    public RouteLabel getRouteFor(int id, boolean active, ItemIdentifier type) {
+        ensureConnectionsFresh();
+        if (id == simpleID) {
+            return null;
+        }
+        PairView view = pairTo(id);
+        int i = pickRoute(view.routes, active, type);
+        return i < 0 ? null : view.labels[i];
     }
 
     @Override

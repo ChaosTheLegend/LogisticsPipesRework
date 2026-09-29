@@ -57,6 +57,18 @@ public final class RouteLabel {
         return list;
     }
 
+    private volatile CorridorEdge[] edgeArray;
+
+    /** {@link #edges()} as an array, built once per label. Callers must not modify it. */
+    public CorridorEdge[] edgeArray() {
+        CorridorEdge[] array = edgeArray;
+        if (array == null) {
+            array = edges().toArray(new CorridorEdge[0]);
+            edgeArray = array;
+        }
+        return array;
+    }
+
     /** Junctions of the route, source first. */
     public List<JunctionId> path() {
         List<CorridorEdge> edges = edges();

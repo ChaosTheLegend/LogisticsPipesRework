@@ -10,6 +10,7 @@ import java.util.UUID;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.routing.IRouter;
 import logisticspipes.routing.RouterManager;
+import logisticspipes.utils.tuples.LPPosition;
 
 /**
  * Router manager that creates {@link JunctionRouter}s on the server. Client routers, direct connections and security
@@ -19,6 +20,8 @@ public class JunctionRouterManager extends RouterManager {
 
     private final ArrayList<IRouter> routersServer = new ArrayList<>();
     private final Map<UUID, Integer> uuidMap = new HashMap<>();
+    // dimension -> packed position -> router, so loading n pipes is not n linear scans over every router
+    private final Map<Integer, Map<Long, IRouter>> routersByPos = new HashMap<>();
 
     @Override
     public IRouter getRouter(int id) {
@@ -58,7 +61,10 @@ public class JunctionRouterManager extends RouterManager {
         if (!MainProxy.isClient()) {
             synchronized (routersServer) {
                 if (id >= 0 && id < routersServer.size()) {
-                    routersServer.set(id, null);
+                    IRouter old = routersServer.set(id, null);
+                    if (old != null) {
+                        unindex(old);
+                    }
                 }
             }
         }
@@ -71,14 +77,16 @@ public class JunctionRouterManager extends RouterManager {
             return super.getOrCreateRouter(uuid, dimension, xCoord, yCoord, zCoord, forceCreateDuplicate);
         }
         synchronized (routersServer) {
-            if (!forceCreateDuplicate) {
-                for (IRouter r : routersServer) {
-                    if (r != null && r.isAt(dimension, xCoord, yCoord, zCoord)) {
-                        return r;
-                    }
-                }
+            Map<Long, IRouter> inDim = routersByPos.computeIfAbsent(dimension, d -> new HashMap<>());
+            long pos = packPosition(xCoord, yCoord, zCoord);
+            IRouter existing = inDim.get(pos);
+            if (existing != null && !forceCreateDuplicate) {
+                return existing;
             }
             IRouter r = new JunctionRouter(uuid, dimension, xCoord, yCoord, zCoord);
+            if (existing == null) {
+                inDim.put(pos, r);
+            }
             int rId = r.getSimpleID();
             if (routersServer.size() <= rId) {
                 routersServer.ensureCapacity(rId + 1);
@@ -89,6 +97,15 @@ public class JunctionRouterManager extends RouterManager {
             routersServer.set(rId, r);
             uuidMap.put(r.getId(), r.getSimpleID());
             return r;
+        }
+    }
+
+    /** Caller holds the routersServer lock. Leaves the entry alone if it points to another router at that spot. */
+    private void unindex(IRouter router) {
+        LPPosition pos = router.getLPPosition();
+        Map<Long, IRouter> inDim = routersByPos.get(router.getDimension());
+        if (inDim != null) {
+            inDim.remove(packPosition(pos.getX(), pos.getY(), pos.getZ()), router);
         }
     }
 
@@ -122,6 +139,7 @@ public class JunctionRouterManager extends RouterManager {
         synchronized (routersServer) {
             routersServer.clear();
             uuidMap.clear();
+            routersByPos.clear();
         }
     }
 

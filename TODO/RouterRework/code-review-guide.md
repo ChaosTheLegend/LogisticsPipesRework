@@ -3,6 +3,10 @@
 Companion to `agent-implementation-brief(1).md` (the spec), `developer-guide(1).md` (the design rationale) and
 `benchmark-results.md` (numbers). This file explains what every class does and what deserves a careful look.
 
+The rework design choices ([docs/rework-design-decisions.md](../../docs/rework-design-decisions.md)) change parts of this
+router; see §5. The item transport built on top of it is in
+[docs/item-transport-rewrite.md](../../docs/item-transport-rewrite.md).
+
 - Production code: `src/main/java/logisticspipes/routing/astar/`
 - Tests: `src/test/java/logisticspipes/routing/astar/`
 - Old router (`routing/ServerRouter`, `routing/pathfinder/*`) is **unchanged** and still compiles, but nothing
@@ -70,7 +74,7 @@ Run the tests: `./gradlew test --tests 'logisticspipes.routing.astar.*'`
 | Class | Role |
 |---|---|
 | `JunctionRouter` | `IRouter` implementation replacing `ServerRouter`. Keeps its behaviour for change listeners, corridor re-scan triggers, security/firewall side disconnection, interests, queued tasks, routed/sub-power exits. Publishes its corridors and power data to the writer; answers route questions from the engine and converts `RouteLabel`s to `ExitRoute`s once per cache entry. Power tables come from pair routes to power junctions (`PowerView`), the by-cost list and route table from a sweep (`SweepView`). |
-| `CorridorScanner` | Port of `PathFinder#getConnectedRoutingPipes` (special connections, `IRouteProvider`, direct connections, one-way/power-only/network-dividing pipes, firewall filters) plus recording of chunk keys and real corridor length per found router. |
+| `CorridorScanner` | Port of `PathFinder#getConnectedRoutingPipes` (special connections, `IRouteProvider`, direct connections, one-way/power-only/network-dividing pipes, firewall filters) plus recording of chunk keys and real corridor length per found router. Since the transport rewrite it also records the direction taken at each pipe (`travelPathOf`, `null` when the corridor uses anything but LP pipes), which becomes `EdgeSpec`/`CorridorEdge.travelPath`. |
 | `JunctionRouterManager` | `extends RouterManager`; creates `JunctionRouter`s on the server, own server router list/UUID map. Client routers, direct connections and security stations are inherited. |
 | `InterestRegistry` | The static "who is interested in which item" tables (moved from `ServerRouter`). |
 | `RouterIds` | Simple-id allocator + `getBiggestSimpleID()` (moved from `ServerRouter`). |
@@ -238,3 +242,25 @@ Everything in the Minecraft adapter (`JunctionRouter`, `CorridorScanner`, `Junct
 chunk-unload hook) is only covered by in-game testing so far. Worth checking in game: firewall and security-station
 separation, power provider lasers (`getRoutersOnSide` / sub-system power), tesseract / cross-dimension links, crafting
 requests with extras (`checkExtras`), CC broadcast (`getIRoutersByCost`), chunk unload and reload of part of a network.
+
+---
+
+## 5. Effect of the rework design decisions
+
+From [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md), which takes precedence over this guide:
+
+- **Only LP pipes route.** BuildCraft, Thermal Dynamics and other mods' pipes won't be supported for routing.
+  - `CorridorScanner` should stop at any non-LP pipe. Its `IRouteProvider` branch (TD ducts) and the foreign-pipe
+    handling in `PipeInformationManager` (`BCPipeInformationProvider`, `TDDuctInformationProvider`) can then go.
+  - The heuristic note in §4.2 about TD ducts shrinking the scale no longer applies once they're gone.
+  - Tesseracts and other special pipe connections (`SpecialPipeConnection`) keep an explicit link for compatibility. In
+    GTNH they will most likely be treated as chests (buffer endpoints), so they would stop being corridors.
+- **GregTech pipes** are not corridors. They are buffers next to LP pipes, handled like an adjacent inventory.
+- **The Inv. System Connector is kept and upgraded**, so direct connections (`IDirectRoutingConnection`, the scanner's
+  `isDirectConnection` path) stay part of routing.
+- **Side-block (disconnection) upgrades are removed**, and a GT crowbar blocks sides instead. The router's side
+  disconnection (`sideDisconnected`, `isSideDisconneceted`) must read the new per-side state. Security separation is
+  unchanged.
+- **Travel speed comes from tiered transport controller blocks** (like the power junction; the top tier is instant), not
+  speed upgrades. Corridor weights don't depend on speed, so route choice doesn't change. Finding a network's controller
+  could reuse the power-provider pattern (`PowerData` on junctions, routed lookups). The transport doc has the timing.

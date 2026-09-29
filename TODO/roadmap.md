@@ -1,6 +1,8 @@
 # Logistics Pipes Rework — Roadmap
 
-Derived from [rework.md](rework.md). Every open item there is assigned to exactly one phase below.
+Derived from [rework.md](rework.md). Every open item there is assigned to exactly one phase or track below.
+The design choices behind it are in [docs/rework-design-decisions.md](../docs/rework-design-decisions.md); items marked
+_(design doc)_ come from that doc.
 Difficulty legend is the same: 🟢 easy · 🟡 medium · 🟠 hard · 🔴 very hard.
 
 ```
@@ -8,6 +10,8 @@ Phase 1: Crafting system ──┬──► Phase 2: Upgrades & modules ──�
                            │                                  ├──► Phase 4: QoL, balance, polish
                            └──► Phase 3: Block UI & requests ─┘
 Bugs & performance: parallel track, pick up any time
+Transport & routing: parallel track (design doc), pick up any time
+GUI to ModularUI: cross-cutting, done per feature as it is touched
 ```
 
 Phases 2 and 3 both depend on Phase 1 (request handler API) but not on each other, so they can overlap.
@@ -25,6 +29,8 @@ item byproducts, satellite rework, NBT/OreDict crafting, patterns mk1–mk3, ove
 - [ ] 🔴 Better request handler
 - [ ] 🟡 Increase the 127 limit for crafting items
 - [ ] 🟡 Crafting request cancellation (backend: unwind reservations, promises and in-flight items; the UI button comes in Phase 3)
+- [ ] 🟡 Remove the old crafting modules (`ModuleCrafter`, legacy crafting pipe and GUI) _(design doc)_. The pattern
+  crafting pipe replaces them, and the request handler then only has to support staged crafting
 
 ### 1b. Suppliers
 - [ ] 🟡 Item Supplier
@@ -47,29 +53,42 @@ item byproducts, satellite rework, NBT/OreDict crafting, patterns mk1–mk3, ove
 
 ### 2a. Cleanup
 - [ ] Remove unused/useless upgrades
-- [ ] 🟢 Remove the "upgrade module upgrade"; make chassis upgradable by default
-- [ ] 🟢 Increase the number of upgrade slots for modules to 4
-- [ ] 🟡 Remove disconnection upgrades; allow disconnection with a GT tool
+- [ ] 🟡 Remove sneaky upgrades (GT screwdriver instead) _(design doc)_
+- [ ] 🟢 Remove the advanced satellite upgrade; its behaviour becomes the default _(design doc)_
+- [ ] 🟢 Remove the "upgrade module upgrade"; make chassis upgradable by default _(design doc: chassis will have
+  upgrades; per module or shared by the whole chassis is still undecided, settle before starting)_
+- [ ] 🟢 Increase the number of upgrade slots for modules to 4, insertable through the side upgrade GUI without a pipe
+  controller _(design doc)_
+- [ ] 🟡 Remove side-block (disconnection) upgrades; block sides with a GT crowbar _(design doc)_
 - [ ] Connect/disconnect pipes with a wrench
 - [ ] Enable/disable sneaky behavior with a screwdriver
 
 ### 2b. New upgrade set
-- [ ] NBT upgrade: filter by NBT
+- [ ] 🟠 Buffer upgrade: supplier and crafting pipes hold 1 requested set and send it without travel time; also the
+  prestock (without it, pipes re-request every time) _(design doc)_
+- [ ] 🟡 Crafting upgrade: lets suppliers place crafting requests _(design doc)_
+- [ ] 🟡 Crafting monitor upgrade for suppliers, request pipes and the request table: full request tree instead of only
+  "crafts queued", with request limits (1 / 2 / 4 / 6) _(design doc)_. The monitor UI is in 3c
+- [ ] NBT upgrade: filter by NBT; also unlocks the NBT option in crafting pipes _(design doc)_
 - [ ] Damage upgrade: filter by damage values (includes 🟡 fuzzy damage split)
-- [ ] OreDict upgrade: filter by ore dict names
+- [ ] OreDict upgrade: filter by ore dict names; also unlocks the OreDict option in crafting pipes _(design doc)_
 - [ ] Placement rules upgrade: choose which slot to extract from / insert into
-- [ ] 🟢 Item Speed Upgrade
+- [ ] 🟡 Speed upgrade rework: extraction speed / stack size for extractor and provider modules, and pattern crafting table
+  speed, no longer item travel speed _(design doc; replaces "Item Speed Upgrade"; travel speed moves to transport
+  controllers)_
 - [ ] 🟡 Logical Extractor upgrade
-- [ ] Prestock upgrade: request items and keep them prestocked in an internal buffer (needs the Phase 1 request handler)
 - [ ] CC control upgrade: ComputerCraft / OpenComputers integration
 - [ ] 🟡 NBT / OreDict / damage support for the supplier pipe (reuse the filter upgrades above)
 
 ### 2c. Modules & routing priority
 - [ ] 🟡 Rethink modules (do this first in 2c; it decides the scope of the rest)
+  - design doc: remove duplicate modules that only add upgraded features (extractor tiers, item sink variants), replacing
+    them with upgrades
 - [ ] 🟡 ItemSink priority
 - [ ] 🟡 Priority for providers and basic pipes
 - [ ] 🟢 Allow item sink modules to be converted between types in crafting table / assembler / chisel
-- [ ] 🔴 Logistics Fluid Chassis and fluid modules (unblocks module-based fluid crafting from 1c)
+- [ ] 🔴 Logistics Fluid Chassis and fluid modules that work like fluid pipes _(design doc)_ (unblocks module-based
+  fluid crafting from 1c)
 
 **Done when:** the upgrade list is final, every upgrade/module has a single clear purpose, and no connection behavior needs an upgrade item.
 
@@ -132,11 +151,32 @@ Not tied to a phase. Pick these up whenever there's room.
 - [ ] 🟢 Torch can be mounted on a crafting (any?) pipe by using a wrench on the bottom face of the torch
 - [ ] 🟡 LAN host's render config overrides other clients' config
 - [ ] 🟠 Large network: adding any non-transport pipe causes short but severe lag (routing table rebuild; worth doing before or during Phase 1, since the request handler will stress routing more)
+- [ ] 🟡 FPS lag from particles ([docs/lag-investigation.md](../docs/lag-investigation.md) §2); fits with 4a "reduce particles"
+- [ ] 🟠 FPS lag near many pipes: bake pipe bodies into chunk geometry ([docs/lag-investigation.md](../docs/lag-investigation.md) §3)
+
+## Parallel track — Transport & routing _(design doc)_
+
+- [ ] 🔴 Item transport rewrite: items teleport pipe to pipe in clumps, no traveling item entities. Fixes the TPS lag from
+  items in pipes. Phase 1 is in code, not tested in game: [docs/item-transport-rewrite.md](../docs/item-transport-rewrite.md)
+- [ ] 🟠 Transport controller blocks: tiered, like the power junction, set item travel speed; the last tier is instant
+  (needs pass-through hop skipping in the transport rewrite)
+- [ ] 🟡 Tesseracts / special pipe connections: explicit link kept for compatibility; in GTNH most likely treated as chests
+- [ ] 🟠 Only LP pipes route and carry items: drop BuildCraft / Thermal Dynamics / other pipe support
+- [ ] 🟡 GregTech pipes as buffers that take items from and push items into the LP network
+- [ ] 🟠 Re-add and upgrade the Inv. System Connector pipe: links two networks through any buffer (chests, ender chests,
+  pipelines, chest minecarts, cargo rockets); cleanroom automation and outposts. Moved up from "After the rework"
+
+## Cross-cutting — GUI & debug _(design doc)_
+
+- [ ] 🟠 Rewrite every GUI with ModularUI, adding controls for the design-doc features where old GUIs lack them
+  ([.claude/modularUI-docs/migration-status.md](../.claude/modularUI-docs/migration-status.md)). Modules slated for removal
+  don't need migrating
+- [ ] 🟢 Legacy Wrench item: debugging only, not craftable. Opens legacy GUIs that still exist; does not bring back deleted
+  ones
 
 ## After the rework — Integrations & large features
 
 Out of scope for the four phases above. Revisit once Phase 4 ships.
 
-- [ ] 🟡 Re-add Inv. System Connector pipe
 - [ ] 🟠 Re-add energy transportation to LP
 - [ ] 🔴 AE2 connectivity
