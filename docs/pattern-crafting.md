@@ -398,7 +398,7 @@ Still legacy (no MUI yet): `RequestTableGui`.
 - ~~satellite name field doesn't update and errors when trying to give it a name (likely permission check fail)~~
 - ~~shift-click transfering items that already present in pattern crafting table doesn't correctly display them in gui, this leads to several bugs, such as wrong crafts and missing items~~
 - tps lag due to massive amounts of items traveling in the pipes - the driving engine must be rewritten to make pipes teleport from junction to junction instead of being simulated in world, as well as be able to clump up into chunks when in pipes, the traveling item visual will be client only and will be callebrated based on the travel delay
-  _Causes: see [lag-investigation.md](lag-investigation.md) §1. Rewrite in progress: [item-transport-rewrite.md](item-transport-rewrite.md) (phase 1 in code, not tested in game yet)._
+  _Causes: see [lag-investigation.md](lag-investigation.md) §1. Rewrite in progress: [item-transport-rewrite.md](item-transport-rewrite.md) (phase 1 tested in game 2026-09-30; open issues B22, B23 in [bug-list.md](bug-list.md))._
 - fps lag due to massive amount of particles - disable them, use changing textures/hud glasses status instead
   _Causes: see [lag-investigation.md](lag-investigation.md) §2._
 - large fps lag when near a lot of pipes, cause unknown

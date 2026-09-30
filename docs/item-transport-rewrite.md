@@ -130,22 +130,20 @@ Those decisions take precedence over this doc. What they mean for transport:
 
 **Config:** `itemClumpTransport` (default true; false falls back to the old engine) and `itemClumpGatherTicks` (default 5).
 
-## Status (2026-09-29)
+## Status (2026-09-30)
 
 Phase 1 is implemented as described above. It compiles and the unit tests pass (`TravelPathTest` covers graph merges, versions
-and `hopStillValid`; `ClumpBreakTest` covers the break rule). **It has not been run in game yet.** Check these in game:
+and `hopStillValid`; `ClumpBreakTest` covers the break rule). First in-game pass on a dedicated server (2026-09-30):
+delivery, corridor following, fallbacks (firewall, one-way, ISC, entrances, BC/TD), the gather window, the client
+animation and most of the break rules work. Speed upgrades have no noticeable effect, which is fine since that support
+is being dropped. Found:
 
-- [ ] Items reach chests along a line of routed pipes, and along a corridor of basic transport pipes with branches.
-- [ ] The client animation follows the corridor, shows up to 3 stacks per clump, and doesn't flicker at junctions.
-- [ ] Breaking a pipe under a clump: behind it the clump arrives; the pipe it is in drops the items; ahead of it (or the
-      target) the clump goes back to its source and is routed around the gap. Crafters re-request dropped items.
-- [ ] Saving and reloading, and unloading the target chunk mid-flight: the items arrive after the reload.
-- [ ] Speed upgrades still shorten the trip and power is still used. This is the current code; later, speed comes from
-      transport controller blocks instead.
-- [ ] Firewall filters, one-way pipes, ISC and system entrances still work (they fall back to the old simulation or
-      route each item). BC/TD pipes in a corridor only need to not break anything, because their support is being dropped.
-- [ ] Setting `itemClumpTransport=false` restores the old behaviour.
-- [ ] Spark: compare server tick time with a large number of items in flight, before and after.
+- B22: breaking the plain transport pipe a clump is in doesn't drop its items (routed pipes do). The clump stops
+  rendering and still arrives at the next routed pipe.
+- B23: after a break, items wait at the junction or in the retry buffer instead of rerouting, and wait forever when
+  there's no path. They should take the new path or a default route.
+
+What's left to test (save/unload, config switch, spark) is in [testing-checklist.md](testing-checklist.md) §1.
 
 ## Later phases
 
@@ -164,9 +162,10 @@ and `hopStillValid`; `ClumpBreakTest` covers the break rule). **It has not been 
 
 ## Known behaviour changes
 
-- Items no longer random-walk at branches of plain transport pipes. They follow the corridor the router picked. - needs to be tested, most likely acceptable
+- Items no longer random-walk at branches of plain transport pipes. They follow the corridor the router picked. - tested in game, acceptable
 - ~~Breaking a plain pipe in the middle of a corridor doesn't stop clumps already on it; they arrive at the far junction.~~ Reworked (see Decisions): behind → finish, the current pipe → drop, ahead → return to the source junction.
 - A new, shorter route that appears while a clump is travelling isn't taken until the clump is routed again. - acceptable
+- A player who walks into range while a clump is in flight sees it again once they're close enough. - tested, acceptable
 - An item that joins a clump late (gather window) arrives up to `itemClumpGatherTicks` ticks early. - acceptable
 
 - Clump items still spawn gold "energy" sparkles at each routed pipe they pass, like before (the particle fix is separate). - to be adressed
