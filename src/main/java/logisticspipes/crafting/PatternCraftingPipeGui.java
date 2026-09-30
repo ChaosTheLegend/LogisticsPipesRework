@@ -227,9 +227,11 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
             }
         }
         if (!hasSubGui()) {
-            SatelliteSlot satelliteSlot = getSatelliteHotspotSlot(mouseX, mouseY);
-            if (mouseButton == 0 && advancedSatelliteUpgrade && satelliteSlot != null) {
-                openSatelliteSelector(satelliteSlot);
+            SatelliteSlot satelliteSlot = getSatelliteSlot(mouseX, mouseY);
+            if (mouseButton == 0 && isCtrlKeyDown() && satelliteSlot != null) {
+                if (advancedSatelliteUpgrade && editedPatternInventory.getPatternStack() != null) {
+                    openSatelliteSelector(satelliteSlot);
+                }
                 return;
             }
             int tabSlot = getTabSlot(mouseX, mouseY);
@@ -250,6 +252,14 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
         } finally {
             PatternItemRenderer.clearForceResultRender();
         }
+    }
+
+    public int getSelectedPatternSlot() {
+        return selectedPatternSlot;
+    }
+
+    public PipeItemsPatternCraftingLogistics getPipe() {
+        return pipe;
     }
 
     private void selectPatternSlot(int slot) {
@@ -412,7 +422,7 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
     }
 
     private void drawSatelliteTooltip(int mouseX, int mouseY) {
-        SatelliteSlot target = getSatelliteHotspotSlot(mouseX, mouseY);
+        SatelliteSlot target = getSatelliteSlot(mouseX, mouseY);
         if (target == null) {
             return;
         }
@@ -447,6 +457,7 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
         if (target.output) {
             tooltip.add("Requires a byproduct extraction upgrade");
         }
+        tooltip.add("Ctrl + left-click to configure satellite");
         GuiGraphics.drawToolTip(mouseX, mouseY, tooltip, EnumChatFormatting.WHITE);
     }
 
@@ -494,20 +505,21 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
         return null;
     }
 
-    private SatelliteSlot getSatelliteHotspotSlot(int mouseX, int mouseY) {
+    private SatelliteSlot getSatelliteSlot(int mouseX, int mouseY) {
         AbstractPattern pattern = currentPattern();
         PatternSlotLayout layout = layout(pattern);
+        int hotspotSize = isCtrlKeyDown() ? SLOT_SIZE : SATELLITE_ICON_SIZE;
         for (int inputSlot = 0; inputSlot < pattern.getIngredientSlotCount(); inputSlot++) {
             int x = guiLeft + layout.inputX(inputSlot);
             int y = guiTop + layout.inputY(inputSlot);
-            if (mouseX >= x && mouseX < x + SATELLITE_ICON_SIZE && mouseY >= y && mouseY < y + SATELLITE_ICON_SIZE) {
+            if (mouseX >= x && mouseX < x + hotspotSize && mouseY >= y && mouseY < y + hotspotSize) {
                 return new SatelliteSlot(inputSlot, false);
             }
         }
         for (int outputSlot = 0; outputSlot < pattern.getResultSlotCount(); outputSlot++) {
             int x = guiLeft + layout.outputX(outputSlot);
             int y = guiTop + layout.outputY(outputSlot);
-            if (mouseX >= x && mouseX < x + SATELLITE_ICON_SIZE && mouseY >= y && mouseY < y + SATELLITE_ICON_SIZE) {
+            if (mouseX >= x && mouseX < x + hotspotSize && mouseY >= y && mouseY < y + hotspotSize) {
                 return new SatelliteSlot(outputSlot, true);
             }
         }

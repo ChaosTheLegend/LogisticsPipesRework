@@ -8,17 +8,25 @@ import cpw.mods.fml.common.Mod;
 import gregtech.api.recipe.RecipeCategory;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.config.Configs;
+import logisticspipes.crafting.PatternCraftingPipeGui;
 import logisticspipes.crafting.pattern.PatternGui;
 import logisticspipes.crafting.requesttable.RequestTableGui;
 import logisticspipes.gui.GuiLogisticsCraftingTable;
 import logisticspipes.gui.GuiSolderingStation;
 import logisticspipes.gui.orderer.GuiRequestTable;
+import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.oredict.OreDictionary;
 
 public class NEILogisticsPipesConfig implements IConfigureNEI {
 
     public static boolean added = false;
+
+    private static void registerPatternOverlays(Class<? extends GuiContainer> guiClass) {
+        for (String overlay : new String[]{"crafting", "crafting2x2", "smelting", "solderingstation"}) {
+            API.registerGuiOverlayHandler(guiClass, LogisticPatternHandler.INSTANCE, overlay);
+        }
+    }
 
     @Override
     public void loadConfig() {
@@ -59,13 +67,13 @@ public class NEILogisticsPipesConfig implements IConfigureNEI {
 
         // register pattern handling
         API.registerNEIGuiHandler(new LogisticsPattern_NEIGuiHandler());
-        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "crafting");
-        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "crafting2x2");
-        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "smelting");
-        API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, "solderingstation");
+        registerPatternOverlays(PatternGui.class);
+        registerPatternOverlays(PatternCraftingPipeGui.class);
         if (Loader.isModLoaded("gregtech")) {
             for (RecipeCategory category : RecipeCategory.ALL_RECIPE_CATEGORIES.values()) {
                 API.registerGuiOverlayHandler(PatternGui.class, LogisticPatternHandler.INSTANCE, category.unlocalizedName);
+                API.registerGuiOverlayHandler(
+                    PatternCraftingPipeGui.class, LogisticPatternHandler.INSTANCE, category.unlocalizedName);
             }
         }
 

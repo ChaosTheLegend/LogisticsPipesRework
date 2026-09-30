@@ -127,8 +127,8 @@ public class PatternGui extends LogisticsBaseGuiScreen {
                 return;
             }
         }
-        if (mouseButton == 0 && !hasSubGui()) {
-            SatelliteSlot satelliteSlot = getSatelliteHotspotSlot(mouseX, mouseY);
+        if (mouseButton == 0 && isCtrlKeyDown() && !hasSubGui()) {
+            SatelliteSlot satelliteSlot = getSatelliteSlot(mouseX, mouseY);
             if (satelliteSlot != null) {
                 openSatelliteSelector(satelliteSlot);
                 return;
@@ -258,7 +258,7 @@ public class PatternGui extends LogisticsBaseGuiScreen {
     }
 
     private void drawSatelliteButtonTooltip(int mouseX, int mouseY) {
-        SatelliteSlot target = getSatelliteHotspotSlot(mouseX, mouseY);
+        SatelliteSlot target = getSatelliteSlot(mouseX, mouseY);
         if (target == null) {
             return;
         }
@@ -266,6 +266,7 @@ public class PatternGui extends LogisticsBaseGuiScreen {
         int satelliteId = getSatelliteId(target, fluidTarget);
         String satelliteUuid = getSatelliteUuid(target, fluidTarget);
         List<String> tooltip = new ArrayList<>();
+        tooltip.add("Ctrl + left-click to configure satellite");
         if (satelliteId <= 0 && satelliteUuid.isEmpty()) {
             tooltip.add(target.output ? "Extract byproduct locally" : "Local inventory");
         } else {
@@ -329,20 +330,21 @@ public class PatternGui extends LogisticsBaseGuiScreen {
             : (fluidTarget ? "F" : "S")) : "+", x + 1, y, 0xffffff);
     }
 
-    private SatelliteSlot getSatelliteHotspotSlot(int mouseX, int mouseY) {
+    private SatelliteSlot getSatelliteSlot(int mouseX, int mouseY) {
         AbstractPattern pattern = currentPattern();
         PatternSlotLayout layout = layout(pattern);
+        int hotspotSize = isCtrlKeyDown() ? PatternSlotLayout.SLOT_SIZE : SATELLITE_ICON_SIZE;
         for (int inputSlot = 0; inputSlot < getInputSize(); inputSlot++) {
             int x = guiLeft + layout.inputX(inputSlot);
             int y = guiTop + layout.inputY(inputSlot);
-            if (mouseX >= x && mouseX < x + SATELLITE_ICON_SIZE && mouseY >= y && mouseY < y + SATELLITE_ICON_SIZE) {
+            if (mouseX >= x && mouseX < x + hotspotSize && mouseY >= y && mouseY < y + hotspotSize) {
                 return new SatelliteSlot(inputSlot, false);
             }
         }
         for (int outputSlot = 0; outputSlot < pattern.getResultSlotCount(); outputSlot++) {
             int x = guiLeft + layout.outputX(outputSlot);
             int y = guiTop + layout.outputY(outputSlot);
-            if (mouseX >= x && mouseX < x + SATELLITE_ICON_SIZE && mouseY >= y && mouseY < y + SATELLITE_ICON_SIZE) {
+            if (mouseX >= x && mouseX < x + hotspotSize && mouseY >= y && mouseY < y + hotspotSize) {
                 return new SatelliteSlot(outputSlot, true);
             }
         }

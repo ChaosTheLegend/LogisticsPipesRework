@@ -11,6 +11,8 @@ import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
 import logisticspipes.network.abstractpackets.CoordinatesPacket;
 import logisticspipes.network.abstractpackets.ModernPacket;
+import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
@@ -32,6 +34,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
     private List<Integer> indices = new ArrayList<>();
     private List<IPatternStack> outputs = new ArrayList<>();
     private int patternInventorySlot = -1;
+    private int pipePatternSlot = -1;
     private boolean processingPattern;
 
     public NEISetPatternCraftingRecipe(int id) {
@@ -41,7 +44,14 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
     @Override
     public void processPacket(EntityPlayer player) {
 
-        importRecipe(player, patternInventorySlot, inputs, indices, outputs);
+        if (pipePatternSlot >= 0) {
+            LogisticsTileGenericPipe tile = getPipe(player.worldObj);
+            if (tile == null || !(tile.pipe instanceof PipeItemsPatternCraftingLogistics pipe)) return;
+            ItemStack patternStack = pipe.getPatternModule().getPatternItemStack(pipePatternSlot);
+            importRecipe(player, patternStack, inputs, indices, outputs, pipe.getPatternModule()::markPatternInventoryDirty);
+        } else {
+            importRecipe(player, patternInventorySlot, inputs, indices, outputs);
+        }
     }
 
     public void importRecipe(EntityPlayer player, int patternInventorySlot, @NonNull List<IPatternStack> inputs,
@@ -49,6 +59,11 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         if (patternInventorySlot < 0 || patternInventorySlot >= player.inventory.mainInventory.length) return;
 
         ItemStack patternStack = player.inventory.mainInventory[patternInventorySlot];
+        importRecipe(player, patternStack, inputs, indices, outputs, player.inventory::markDirty);
+    }
+
+    private void importRecipe(EntityPlayer player, ItemStack patternStack, List<IPatternStack> inputs,
+                              List<Integer> indices, List<IPatternStack> outputs, Runnable markDirty) {
         if (patternStack == null || patternStack.getItem() != LogisticsPipes.LogisticsPattern) return;
 
         if (!(player.openContainer instanceof PatternContainer container)
@@ -61,7 +76,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         ItemPattern.setProcessingPattern(patternStack, processingPattern);
         AbstractPattern pattern = ItemPattern.fromStack(patternStack);
         pattern.setInputsAndOutputs(inputs, indices, outputs);
-        player.inventory.markDirty();
+        markDirty.run();
         container.reloadFromPattern(pattern);
     }
 
@@ -75,6 +90,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         super.writeData(data);
 
         data.writeInt(patternInventorySlot);
+        data.writeInt(pipePatternSlot);
         data.writeBoolean(processingPattern);
         data.writeList(inputs, (data1, object) -> {
             var nbt = new NBTTagCompound();
@@ -100,6 +116,7 @@ public class NEISetPatternCraftingRecipe extends CoordinatesPacket {
         super.readData(data);
 
         patternInventorySlot = data.readInt();
+        pipePatternSlot = data.readInt();
         processingPattern = data.readBoolean();
         indices.clear();
         inputs = data.readList(data1 -> IPatternStack.readFromNBT(data1.readNBTTagCompound()));

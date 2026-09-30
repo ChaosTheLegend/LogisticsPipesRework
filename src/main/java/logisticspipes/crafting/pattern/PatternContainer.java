@@ -164,7 +164,9 @@ public class PatternContainer extends DummyContainer {
     }
 
     public boolean isEditingPattern(ItemStack stack) {
-        return _dummyInventory instanceof PatternInventory inventory && inventory.getPatternStack() == stack;
+        if (stack == null) return false;
+        return (_dummyInventory instanceof PatternInventory inventory && inventory.getPatternStack() == stack)
+            || (_dummyInventory instanceof PipePatternInventory pipeInventory && pipeInventory.getPatternStack() == stack);
     }
 
     /**
@@ -178,7 +180,7 @@ public class PatternContainer extends DummyContainer {
         }
         updatePatternSlotLayout(pattern);
         if (isEditingPattern(pattern.getPatternStack())) {
-            // PatternInventory reads directly from the updated NBT. Re-inserting display stacks would
+            // Both pattern inventories read directly from the updated NBT. Re-inserting display stacks would
             // convert item ingredients such as filled buckets into fluids.
             detectAndSendChanges();
             return;
