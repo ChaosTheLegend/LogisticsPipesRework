@@ -98,7 +98,7 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
             return;
         }
         LogisticsTileGenericPipe pipe = ((LogisticsTileGenericPipe) tileentity);
-        if (pipe.pipe == null) {
+        if (pipe.pipe == null || !hasDynamicContent(pipe)) {
             return;
         }
 
@@ -110,10 +110,6 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
         double distance = Math.pow(viewEntity.lastTickPosX - tileentity.xCoord, 2)
                 + Math.pow(viewEntity.lastTickPosY - tileentity.yCoord, 2)
                 + Math.pow(viewEntity.lastTickPosZ - tileentity.zCoord, 2);
-        if (LogisticsRenderPipe.config.isUseNewRenderer()) {
-            LogisticsRenderPipe.secondRenderer
-                    .renderTileEntityAt((LogisticsTileGenericPipe) tileentity, x, y, z, partialTickTime, distance);
-        }
         if (LogisticsRenderPipe.config.getRenderPipeContentDistance()
                 * LogisticsRenderPipe.config.getRenderPipeContentDistance() < distance) {
             return;
@@ -132,6 +128,31 @@ public class LogisticsRenderPipe extends TileEntitySpecialRenderer {
                 renderSolids(pipe.pipe, x, y, z, partialTickTime);
             }
         }
+    }
+
+    /** The pipe body is baked into the chunk; only signs, BC wires/gates and pipe contents are drawn here. */
+    private boolean hasDynamicContent(LogisticsTileGenericPipe pipe) {
+        if (pipe.pipe instanceof CoreRoutedPipe && ((CoreRoutedPipe) pipe.pipe).hasPipeSigns()) {
+            return true;
+        }
+        if (bcRenderer.hasDynamicContent(pipe)) {
+            return true;
+        }
+        if (pipe.isOpaque()) {
+            return false;
+        }
+        PipeTransportLogistics transport = pipe.pipe.transport;
+        if (!transport.items.isEmpty() || !transport._itemBuffer.isEmpty()) {
+            return true;
+        }
+        if (transport instanceof PipeFluidTransportLogistics) {
+            for (FluidStack fluidStack : ((PipeFluidTransportLogistics) transport).renderCache) {
+                if (fluidStack != null && fluidStack.amount > 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void renderSolids(CoreUnroutedPipe pipe, double x, double y, double z, float partialTickTime) {

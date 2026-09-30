@@ -116,6 +116,10 @@ public abstract class ValidatedRoutes {
         if (graph.node(source.index()) == null) {
             return false;
         }
+        if (edges.length == 0) {
+            // "unreachable" has no corridors to check, and a merge can make it wrong: recompute instead of serving it
+            return false;
+        }
         for (CorridorEdge recorded : edges) {
             CorridorEdge now = graph.edge(recorded.id);
             if (now == null || !now.to.equals(recorded.to)

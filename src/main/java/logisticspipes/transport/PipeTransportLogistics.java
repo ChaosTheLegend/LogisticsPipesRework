@@ -42,6 +42,7 @@ import logisticspipes.interfaces.ISubSystemPowerProvider;
 import logisticspipes.interfaces.routing.ITargetSlotInformation;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
+import logisticspipes.modules.abstractmodules.LogisticsModule;
 import logisticspipes.modules.abstractmodules.LogisticsModule.ModulePositionType;
 import logisticspipes.network.PacketHandler;
 import logisticspipes.network.packets.pipe.ItemBufferSyncPacket;
@@ -391,13 +392,25 @@ public class PipeTransportLogistics {
             LogisticsPipes.log.fatal("THIS IS NOT SUPPOSED TO HAPPEN!");
             return ForgeDirection.UNKNOWN;
         }
-        if (value == ForgeDirection.UNKNOWN && !data.getDoNotBuffer() && data.getBufferCounter() < 5) {
-            _itemBuffer.add(
-                    new Triplet<>(
-                            data.getItemIdentifierStack(),
-                            new Pair<>(_bufferTimeOut, data.getBufferCounter()),
-                            null));
-            return null;
+        if (value == ForgeDirection.UNKNOWN) {
+            if (!data.getDoNotBuffer() && data.getBufferCounter() < 5) {
+                // the stack is retried as a new item, so free any room its destination still holds for it
+                releaseReservation(data);
+                _itemBuffer.add(
+                        new Triplet<>(
+                                data.getItemIdentifierStack(),
+                                new Pair<>(_bufferTimeOut, data.getBufferCounter()),
+                                null));
+                return null;
+            }
+            // out of retries: last effort is any default route with room, only then the item drops
+            if (SimpleServiceLocator.logisticsManager
+                    .assignDefaultRouteFor(data, getRoutedPipe().getRouter().getSimpleID())) {
+                ForgeDirection retry = getRoutedPipe().getRouteLayer().getOrientationForItem(data, null);
+                if (retry != null) {
+                    value = retry;
+                }
+            }
         }
 
         if (value != ForgeDirection.UNKNOWN && !getRoutedPipe().getRouter().isRoutedExit(value)) {
@@ -409,6 +422,18 @@ public class PipeTransportLogistics {
         data.resetDelay();
 
         return value;
+    }
+
+    /** Stop counting {@code data} as in transit to its passive destination; its routing info is about to be lost. */
+    private void releaseReservation(LPTravelingItemServer data) {
+        if (data.getDestination() < 0 || data.getTransportMode() == TransportMode.Active || data.getInfo() == null) {
+            return;
+        }
+        IRouter router = SimpleServiceLocator.routerManager.getRouterUnsafe(data.getDestination(), false);
+        CoreRoutedPipe destination = router != null ? router.getCachedPipe() : null;
+        if (destination != null) {
+            destination.notifyOfReroute(data.getInfo());
+        }
     }
 
     // ------------------------------------------------------------------ clump transport
@@ -1095,6 +1120,10 @@ public class PipeTransportLogistics {
                 }
 
                 if (arrivingItem.getItemIdentifierStack().getStackSize() > 0) {
+                    LogisticsModule module = getRoutedPipe().getLogisticsModule();
+                    if (module != null) {
+                        module.insertionFailed(arrivingItem.getItemIdentifierStack().getItem());
+                    }
                     reverseItem(arrivingItem);
                 }
             }

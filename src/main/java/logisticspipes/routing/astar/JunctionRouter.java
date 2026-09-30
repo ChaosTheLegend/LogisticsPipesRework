@@ -978,13 +978,22 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
             JunctionNode node = graph.node(targets.get(i));
             data[i] = node == null ? null : node.data;
         }
+        // only tie the view to this snapshot when its routes are valid on it; a stale route (refreshed in the
+        // background) would otherwise stay pinned until the graph changes again, e.g. "unpowered" after a merge
+        boolean fresh = true;
+        for (RouteCacheEntry e : entries) {
+            if (e != null && !e.isValid(graph)) {
+                fresh = false;
+                break;
+            }
+        }
         PowerView cached = powerView;
         if (cached != null && cached.targets.equals(targets)
                 && cached.ownPower == _powerAdjacent
                 && cached.ownSubSystemPower == _subSystemPowerAdjacent
                 && sameElements(cached.entries, entries)
                 && sameElements(cached.data, data)) {
-            cached.graph = graph;
+            cached.graph = fresh ? graph : null;
             return cached;
         }
 
@@ -1027,7 +1036,7 @@ public class JunctionRouter implements IRouter, Comparable<JunctionRouter> {
                 _subSystemPowerAdjacent,
                 Collections.unmodifiableList(powerTable),
                 Collections.unmodifiableList(subPowerTable));
-        view.graph = graph;
+        view.graph = fresh ? graph : null;
         powerView = view;
         return view;
     }

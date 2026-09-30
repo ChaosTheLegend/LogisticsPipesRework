@@ -229,6 +229,43 @@ class RouteCacheTest {
         assertEquals(20, now.totalWeight, 1e-9); // 1-4-5-6-3
     }
 
+    /**
+     * Two islands joined by a new pipe: each end publishes its corridor separately, so for a moment only 2 -> 3 exists.
+     * "Unreachable" cached in that window must not be served once 3 -> 2 exists (it left pipes unpowered, bug 7).
+     */
+    @Test
+    void unreachableIsNeverServedStaleAfterAMerge() {
+        JunctionGraphWriter w = new JunctionGraphWriter();
+        node(w, 1, 0, 0, 0);
+        node(w, 2, 5, 0, 0);
+        node(w, 3, 10, 0, 0);
+        node(w, 4, 15, 0, 0);
+        Map<Integer, List<EdgeSpec>> out = new HashMap<>();
+        link(out, 1, 2, 5);
+        link(out, 3, 4, 5);
+        TestNetworks.apply(w, out);
+        JunctionRoutingEngine engine = new JunctionRoutingEngine(w);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        engine.setExecutor(pool);
+        try {
+            List<EdgeSpec> two = new ArrayList<>(TestNetworks.specsOf(w.graph(), 2));
+            two.add(edge(3, 5));
+            w.setEdges(id(2), two);
+            assertFalse(engine.findRoute(id(4), id(1)).isReachable(), "half-merged: no way back yet");
+            assertFalse(
+                    engine.findRoutesToTargets(id(4), Collections.singleton(id(1))).get(id(1)).isReachable(),
+                    "half-merged: no way back yet");
+
+            List<EdgeSpec> three = new ArrayList<>(TestNetworks.specsOf(w.graph(), 3));
+            three.add(edge(2, 5));
+            w.setEdges(id(3), three);
+            assertTrue(engine.findRoute(id(4), id(1)).isReachable());
+            assertTrue(engine.findRoutesToTargets(id(4), Collections.singleton(id(1))).get(id(1)).isReachable());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     @Test
     void oneToManyFillsThePairCache() {
         JunctionGraphWriter w = ladder();

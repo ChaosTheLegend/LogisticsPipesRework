@@ -35,6 +35,7 @@
 - Logistics fluid chassis - same as regular chassis, but support fluid modules
 - Pattern crafting pipe - new driver for autocrafting, the old crafting system is going to be deprecated
 - Inv. system connector pipe - to be re-enabled and upgraded. this is the major advantage of LP allowing to connect 2 networks using *ANY* intermediate buffer (chests, ender chests, long distance pipelines, *chest minecarts*, *CARGO ROCKETS* <- wild one, and more), can be used to automate cleanroom and connect LP networks from different outposts
+- Extractor pipe - same as extractor module (why don't we have this yet?)
 
 ## Debug/Legacy
 

@@ -351,6 +351,11 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
         removeFromInTransit(routedItem);
     }
 
+    /** An item already travelling was given this pipe as its new destination. */
+    public void notifyOfRerouteTo(ItemRoutingInformation routedItem) {
+        notifyOfSend(routedItem);
+    }
+
     private void removeFromInTransit(ItemRoutingInformation routedItem) {
         _inTransitToMe.remove(routedItem);
     }
@@ -1854,6 +1859,15 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
                 signItem[dir.ordinal()].activate(player);
             }
         }
+    }
+
+    public boolean hasPipeSigns() {
+        for (IPipeSign sign : signItem) {
+            if (sign != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public List<Pair<ForgeDirection, IPipeSign>> getPipeSigns() {

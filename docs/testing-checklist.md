@@ -77,7 +77,8 @@ Details: [lag-investigation.md](lag-investigation.md), and the known issues in [
 - [ ] If spark still shows a per-pipe floor, check the follow-ups at the end of §4 (BC tile part, `isDirty`, ticking
       empty transport pipes, periodic corridor re-scan).
 
-Not written yet, so nothing to test: the particle fixes (§2) and the pipe rendering fixes (§3).
+The pipe rendering fixes (§3) are written now, see section 8. The particle fixes (§2) aren't. For now,
+`enableParticleFX=false` in the server config turns all LP particles and laser packets off (section 8).
 
 ## 3. Pattern crafting: fixes to verify in game
 
@@ -172,3 +173,80 @@ Details: [pattern-crafting.md](pattern-crafting.md) §7 and §8.7.
       (§8.8 found no crash path by reading the code).
 - [ ] Without NEI installed: `PatternFluidStack` doesn't throw `NoClassDefFoundError` (G9, expected to fail until
       fixed).
+
+## 8. Pipe rendering (2026-09-30)
+
+The pipe body is baked into chunk geometry in the world renderer (solid pass only) instead of being drawn by the TESR
+every frame. The TESR returns early for pipes with nothing dynamic to draw. Tested so far: stable FPS with thousands of
+pipes in view.
+
+**Looks the same as before**
+- [ ] Pipe shapes for every connection count: straight, corners, T-junctions, crosses, supports, and mounts next to
+      solid blocks.
+- [ ] Routed/status side textures, the inactive (unpowered) corners, and the per-pipe center icon.
+- [ ] Fluid pipes: inner glass plates and side texture plates.
+- [ ] Sides stretched to a neighbour's block bounds (e.g. a pipe next to a slab).
+- [ ] Lighting matches: one brightness value per block, same as the old TESR.
+- [ ] Request table still renders (it was already baked).
+- [ ] Inventory and held pipe items are unchanged (`LogisticsNewPipeItemRenderer` wasn't touched).
+
+**Updates**
+- [ ] Status textures change when routing or power changes (chunk rebuild from `afterStateUpdated`).
+- [ ] Placing or removing a neighbour block updates mounts and connections.
+- [ ] Toggling "Use New Renderer" switches between the old and new models.
+- [ ] With Angelica: no crashes or corruption (CCL's render state isn't thread-safe; it should run on the main thread).
+
+**TESR early return**
+- [ ] Items in transit, buffered items, fluids and pipe signs still render.
+- [ ] BuildCraft wires and gates with dynamic parts still render.
+
+**Settings**
+- [ ] The settings tab shows only "Use New Renderer" and "Max. Distance for Pipe Content". "Pipe render distance",
+      "fallback renderer" and "VBO renderer" are gone.
+- [ ] Old player config files still load. Client and server both need the new build (the config packet changed).
+
+**Particles**
+- [ ] `enableParticleFX=false` on the server: no `ParticleFX` or `PowerPacketLaser` packets are sent. Measure mspt
+      against `true`.
+
+## 9. Routing to full or missing inventories (2026-09-30)
+
+`ModuleItemSink` (basic pipes and chassis item sinks) caches room in its target inventory for 20 ticks. It stops
+advertising itself when there's no room or no inventory, and marks an item as full when an insert fails. Basic pipes
+now reroute arriving items they can't take. Tested so far: 20k pipes with millions of items ran at 60 FPS but 1000+
+mspt before these changes.
+
+**Full inventories**
+- [ ] A full chest behind a basic pipe or chassis item sink stops getting items. They go to other sinks with room.
+- [ ] Items that bounce off a full chest go to another router, not back into the same chest.
+- [ ] After a chest is emptied, its sink starts accepting again within about 40 ticks.
+- [ ] A full default route still takes top-ups for stacks that aren't full.
+- [ ] A filtered sink stops advertising only the filter items it has no room for.
+- [ ] Special inventories (barrels, drawers, AE, DSU): a default route keeps working, and a full one rejects items.
+- [ ] Basic pipe touching several inventories: no item loops (only the first inventory it finds is checked for room).
+- [ ] Spark: mspt in the 20k-pipe world with all storage full, before vs. after.
+
+**Basic pipe with no inventory**
+- [ ] It isn't chosen as a destination, including as a default route.
+- [ ] It becomes a destination again within about 40 ticks after a chest is attached.
+- [ ] Items already in flight to it are rerouted to another sink with room.
+- [ ] With no destination anywhere, they wait in the pipe's buffer, retry every 2 s, and drop after about 10 s.
+- [ ] Losing network power while items are in flight: they reroute and eventually drop instead of being delivered
+      (same as chassis). Check that this is acceptable.
+
+**Joining networks (B18, B19 in [bug-list.md](bug-list.md))**
+- [ ] Join a powered and an unpowered island with one pipe: every pipe in the unpowered island shows as powered and
+      routes. Try it several times, and with larger islands.
+- [ ] B19 repro: several small chests on basic pipes. Once the first chest fills, the rest of the clump goes to the
+      next chest instead of staying in the pipe buffer.
+- [ ] Spark: no noticeable routing cost from recomputing "unreachable" routes after graph changes (they used to be
+      served stale).
+- [ ] B20: extractor + small filtered chests + a default route. Items that bounce off a full chest go to another
+      filtered chest with room, not the default route. The extractor sends partial stacks when a chest has less
+      than a stack of room left.
+- [ ] Items in transit don't leak: after the network is idle, `countOnRoute` is back to 0 for every sink (e.g. sinks
+      don't stay "full" with nothing in flight).
+- [ ] B21: 16x16 grid of basic pipes with chests, extract into it until chests fill. Bounced items find another chest
+      instead of dropping.
+- [ ] B21 fallback: with every filtered chest full, items that run out of retries go to a default route with room.
+      They only drop when no default route has room either.
