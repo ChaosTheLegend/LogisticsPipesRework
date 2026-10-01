@@ -97,6 +97,63 @@ Template:
   the junction were a routed pipe. Not critical. Wanted: at a plain transport pipe junction the item takes a random
   nearby exit, so routing needs routed pipes at the junctions.
 
+## Crafting
+
+### B33: Crafting pipes mix up which pattern an ingredient was requested for
+- **Status:** open
+- **Found:** 2026-10-01, in game
+- **Where:** staged branches: `RequestTreeNode.fullFillStaged` / `toPatternCraftingBranch` (`RequestTreeNode.java:276-334`),
+  `PatternCraftingBranch.copyForAmount` / `allocateChildrenForCraftingAmount` / `canMergeWith` / `mergeWith`
+  (`PatternCraftingBranch.java:450, 827, 909-956`), `PatternCraftingOrder.requestFromBranches` / `branchTargetsInputSlot`
+  (`PatternCraftingOrder.java:359-435`). This is pattern-crafting.md C3.
+- **Repro:** a complex chain with many recursive recipes and microcrafts (found with an HV circuit chain).
+- **Notes:** When two or more patterns request the same item or fluid at the same time, the pipes lose track of which
+  pattern it was for and stall forever. Expected: each pipe knows which craft an arriving item or fluid belongs to.
+  - The arrival side isn't the problem. `itemArrived` (`ModulePatternCrafting.java:1063`) trusts the
+    `PatternTargetInformation` on the item. The slot only gets guessed (`findItemArrivalPattern:1244`) when that info is
+    missing, and then it refuses to guess if more than one slot fits.
+  - The tag is wrong when the order is placed. A request tree node whose item is crafted by more than one template
+    (several patterns or pipes that make the same thing) keeps all their child nodes in one `subRequests` list.
+    `fullFillStaged` builds a single branch from that node. Each staged promise then gets
+    `branch.copyForAmount(promise amount)`, which shares out the children of every template in proportion. So a
+    pattern's order also holds children that were built for another template.
+  - `PatternCraftingOrder.branchTargetsInputSlot` only compares `inputSlot` and ignores `patternSlot` and the pipe.
+    `requestFromBranches` can therefore use another template's child branch. It passes its own
+    `PatternTargetInformation(patternSlot, inputSlot)` as the info but no target override (`null, null` at
+    `PatternCraftingOrder.java:165`). `copyRequestForTarget` keeps that child's original requester. The item goes to
+    the other template's pipe, tagged with this order's slot. One pipe ends up with surplus in the wrong slot, and the
+    other waits forever.
+  - `canMergeWith` merges sibling branches when their `info` is equal. `PatternTargetInformation` is a record of
+    `(patternSlot, inputSlot)` with no pipe in it, so "slot 0, input 0" in pipe A and in pipe B are merged.
+    `mergeWith` keeps only the first branch's `requestType` and requester, so pipe B's share is delivered to pipe A.
+  - Fix direction: one child list per template/promise instead of one per node, an info that also identifies the
+    requesting pipe (or match on the requester too), and `branchTargetsInputSlot` that checks `patternSlot` and the
+    destination as well.
+
+### B34: Blocking/smart mode never starts crafts that use non-consumed items
+- **Status:** open
+- **Found:** 2026-10-01, in game
+- **Where:** `AdjacentInventoryHandler.isEmpty` (`AdjacentInventoryHandler.java:561-591`). Its callers in
+  `ModulePatternCrafting`: `canReceiveForPattern:1434`, `pushBufferedIngredientsFor:1949`, `spaceForArrivingIngredient`
+  / fluid variant `:1285, 1307`, `refreshRunningCraftState` via `isInventoryEmpty:2359`, HUD status `:926`. Also
+  `PatternStagedCraftingScheduler.java:230-251` (orderable sets). The pattern format has no "not consumed" flag
+  (nothing in `IPatternStack` / the pattern NBT). This is pattern-crafting.md C8.
+- **Repro:** request a craft that needs a non-consumed item (tested with an extruder shape) in blocking or smart mode.
+  The craft doesn't start.
+- **Notes:** Molds, extruder shapes and tools are never consumed, but the pipe treats them as part of a craft that is
+  still running.
+  - `isEmpty` returns false if *any* raw slot of the target has a stack or any tank has fluid. It doesn't look at
+    sides, slot roles (GT input vs. special/mold slots) or what the pipe inserted itself.
+  - A shape that is already in the machine: `canReceiveForPattern` says no for every slot while nothing is locked, so
+    the scheduler orders 0 sets and nothing is requested. That's the "won't start" case.
+  - A shape that is part of the pattern: the first set goes in. After that the target never counts as empty again,
+    so `refreshRunningCraftState` never releases the lock and the next set (even one for the same slot in BLOCKING
+    mode, `:1949`) never goes in. Each set also requests another shape, because the pattern counts it as an input.
+  - Fix direction: a per-ingredient "not consumed" flag in the pattern (NBT + MUI toggle). Request it once, don't
+    request it again while it's in the target, and leave matching stacks out of `isEmpty`. A cheaper partial fix is to
+    ignore stacks in `isEmpty` that match a not-consumed ingredient of the active pattern. Existing patterns (without the flag) must keep working as
+    they do now.
+
 ## Rendering
 
 ### B7: Pipe model doesn't update when a neighbour's shape changes

@@ -18,6 +18,7 @@
 - Crafting upgrade (new) - allows suppliers to place crafting requests (currently this behaviour is enabled by default)
 - opaque upgrade - remove, add client side config option to disable item rendering, which will just disable client router for item animations, since server already teleport items
 - Hot upgrade (new) - makes sure that the pipe is always loaded and updated every tick, synergizes with buffer upgrades and allows for 0 tick hot swap (usefull for nukes)
+- Energy transfer upgrades - remove, this is too OP in the context of GTNH and doesn't really fit anywhere
 
 ## Modules
 - Many modules (extractor, itemsink) are duplicates of each other with upgraded functionality, remove duplicate modules, replace them with upgrades
@@ -25,6 +26,7 @@
 - Crafting modules - remove, they will be replaced by pattern crafting pipe and crafting pattern respectively
 - Fluid modules (new) - modules that will work exactly like fluid pipes, they will work with fluid chassis
 - Satellite and fluid satellite module - same as satellite pipes
+- Electric manager - allow for extraction/incertion of batteries into energy slots of machines
 
 ## GUI
 
@@ -36,6 +38,7 @@
 - Add "default route" toggle for basic fluid pipes
 - Make basic fluid pipes have more than 1 filter slots (for tanks that support more than 1 fluid)
 - Add a toggle to crafting pipes to mark non-consumed items or items that use durability (tools)
+- Add pending crafts on the side of request gui for requisters, remote orderers
 
 ## New pipes
 

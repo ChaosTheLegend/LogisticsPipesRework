@@ -166,3 +166,29 @@ no inventory. Full inventories, basic pipes with no inventory, joining networks 
 - [ ] Spark: mspt in the 20k-pipe world with all storage full, before vs. after.
 - [ ] Spark: no noticeable routing cost from recomputing "unreachable" routes after graph changes (they used to be
       served stale).
+
+## 9. Modules and inventory handlers
+
+Changed 2026-10-01: `IInventoryUtil.isEmpty()` with early returns, and GT battery slot support for the electric
+manager (`GTNHProxy.getElectricItemInventory`, `GTBatterySlotInventory`). The chassis room check and item insertion
+use the module's view (`IModuleInventoryOverride`).
+
+- [ ] Electric manager on a GT battery buffer, charge mode: empty batteries of the buffer's tier are inserted, and
+      fully charged ones are taken out and routed on. Same in discharge mode with full and empty batteries swapped.
+- [ ] Batteries of another tier aren't sent to the buffer (GT refuses them), and nothing bounces.
+- [ ] A battery behind an empty buffer slot is still found (the module used to stop at the first empty slot).
+- [ ] Also works on a GT charger and a Tesla coil.
+- [ ] Electric manager on a running GT machine (bender, wiremill, chemical reactor), discharge mode: a charged battery
+      goes into the battery slot, and the empty one is taken out and replaced. Inputs, outputs and the circuit slot
+      aren't touched.
+- [ ] Same in charge mode on a powered machine: empty battery in, charged battery out.
+- [ ] A battery above the machine's tier isn't sent to it. A steam machine gets nothing.
+- [ ] A GT++ battery hatch on a multiblock gets batteries swapped too.
+- [ ] Crop manager: find out which class and mod it is now (it's not in GT 5.09.52.579). It works if it uses GT's
+      charger/decharger slots.
+- [ ] A chassis with an electric manager and an item sink on the same machine: the item sink still inserts into the
+      machine's normal input slots.
+- [ ] Extractor, provider and quicksort next to a battery buffer or machine still can't pull batteries out of it (as
+      before).
+- [ ] Extractor and quicksort on an empty chest, drawer and AE interface: no errors, and they pick items up again once
+      something is put in.

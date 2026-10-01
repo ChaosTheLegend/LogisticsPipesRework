@@ -4,7 +4,9 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.items.MetaBaseItem;
+import logisticspipes.interfaces.IModuleInventory;
 import logisticspipes.proxy.ic2.IC2Proxy;
 import logisticspipes.proxy.interfaces.ICraftingParts;
 import logisticspipes.proxy.interfaces.IIC2Proxy;
@@ -110,5 +112,20 @@ public class GTNHProxy implements IIC2Proxy {
     @Override
     public double injectEnergyUnits(TileEntity tile, ForgeDirection opposite, double d) {
         return ic2Proxy.injectEnergyUnits(tile, opposite, d);
+    }
+
+    /**
+     * GT's sided inventories hide battery slots (battery buffers, machine battery slots, battery hatches), so the
+     * electric manager gets a view of just those slots. See {@link GTBatterySlotInventory}.
+     */
+    @Override
+    public IModuleInventory getElectricItemInventory(TileEntity tile, ForgeDirection side) {
+        if (tile instanceof IGregTechTileEntity gtTile) {
+            IModuleInventory batterySlots = GTBatterySlotInventory.of(gtTile, side);
+            if (batterySlots != null) {
+                return batterySlots;
+            }
+        }
+        return ic2Proxy.getElectricItemInventory(tile, side);
     }
 }

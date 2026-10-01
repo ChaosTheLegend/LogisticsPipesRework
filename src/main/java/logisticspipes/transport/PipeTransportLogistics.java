@@ -36,12 +36,14 @@ import logisticspipes.config.Configs;
 import logisticspipes.interfaces.IBufferItems;
 import logisticspipes.interfaces.IInventoryUtil;
 import logisticspipes.interfaces.IItemAdvancedExistance;
+import logisticspipes.interfaces.IModuleInventory;
 import logisticspipes.interfaces.ISlotUpgradeManager;
 import logisticspipes.interfaces.ISpecialInsertion;
 import logisticspipes.interfaces.ISubSystemPowerProvider;
 import logisticspipes.interfaces.routing.ITargetSlotInformation;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
+import logisticspipes.modules.ChassiModule;
 import logisticspipes.modules.abstractmodules.LogisticsModule;
 import logisticspipes.modules.abstractmodules.LogisticsModule.ModulePositionType;
 import logisticspipes.network.PacketHandler;
@@ -79,6 +81,7 @@ import logisticspipes.utils.OrientationsUtil;
 import logisticspipes.utils.SidedInventoryMinecraftAdapter;
 import logisticspipes.utils.SyncList;
 import logisticspipes.utils.item.ItemIdentifierStack;
+import logisticspipes.utils.transactor.ITransactor;
 import logisticspipes.utils.tuples.LPPosition;
 import logisticspipes.utils.tuples.Pair;
 import logisticspipes.utils.tuples.Triplet;
@@ -943,6 +946,18 @@ public class PipeTransportLogistics {
         }
     }
 
+    /**
+     * @return the inventory view of the chassis module an item is routed to, if that module has its own (see
+     *         {@link logisticspipes.interfaces.IModuleInventoryOverride}), else null
+     */
+    private IModuleInventory getTargetModuleInventory(LPTravelingItemServer arrivingItem) {
+        if (!(arrivingItem.getInfo().targetInfo instanceof ChassiTargetInformation target)
+                || !(getRoutedPipe().getLogisticsModule() instanceof ChassiModule chassis)) {
+            return null;
+        }
+        return chassis.getModuleInventory(target.getModuleSlot());
+    }
+
     protected void handleTileReachedServer(LPTravelingItemServer arrivingItem, TileEntity tile, ForgeDirection dir) {
         if (isRouted && getPipe().container.tilePart.getBCPipePluggable(dir) != null
                 && getPipe().container.tilePart.getBCPipePluggable(dir).isAcceptingItems(arrivingItem)) {
@@ -1054,14 +1069,18 @@ public class PipeTransportLogistics {
                         }
                     }
                 }
+                // a module with its own view of the inventory (electric manager on GT battery slots) inserts there
+                IModuleInventory moduleInventory = getTargetModuleInventory(arrivingItem);
                 // sneaky insertion
-                if (!getRoutedPipe().getUpgradeManager().hasCombinedSneakyUpgrade()
+                if (moduleInventory != null || !getRoutedPipe().getUpgradeManager().hasCombinedSneakyUpgrade()
                         || slotManager.hasOwnSneakyUpgrade()) {
                     ForgeDirection insertion = arrivingItem.output.getOpposite();
                     if (slotManager.hasSneakyUpgrade()) {
                         insertion = slotManager.getSneakyOrientation();
                     }
-                    ItemStack added = InventoryHelper.getTransactorFor(tile, dir.getOpposite())
+                    ITransactor transactor = moduleInventory != null ? moduleInventory
+                            : InventoryHelper.getTransactorFor(tile, dir.getOpposite());
+                    ItemStack added = transactor
                             .add(arrivingItem.getItemIdentifierStack().makeNormalStack(), insertion, true);
 
                     arrivingItem.getItemIdentifierStack().lowerStackSize(added.stackSize);

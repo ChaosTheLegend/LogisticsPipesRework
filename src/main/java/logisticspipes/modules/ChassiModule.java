@@ -8,6 +8,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.IIcon;
 
 import logisticspipes.interfaces.IInventoryUtil;
+import logisticspipes.interfaces.IModuleInventory;
+import logisticspipes.interfaces.IModuleInventoryOverride;
 import logisticspipes.interfaces.IPipeServiceProvider;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.modules.abstractmodules.LogisticsGuiModule;
@@ -71,10 +73,11 @@ public class ChassiModule extends LogisticsGuiModule {
             return null;
         }
         // Always deny items when we can't put the item anywhere
-        IInventoryUtil invUtil = _parentPipe.getSneakyInventory(
-                false,
-                ModulePositionType.SLOT,
-                ((ChassiTargetInformation) bestresult.addInfo).getModuleSlot());
+        int moduleSlot = ((ChassiTargetInformation) bestresult.addInfo).getModuleSlot();
+        IInventoryUtil invUtil = getModuleInventory(moduleSlot);
+        if (invUtil == null) {
+            invUtil = _parentPipe.getSneakyInventory(false, ModulePositionType.SLOT, moduleSlot);
+        }
         if (invUtil == null) {
             return null;
         }
@@ -95,6 +98,15 @@ public class ChassiModule extends LogisticsGuiModule {
             return new SinkReply(bestresult, roomForItem);
         }
         return new SinkReply(bestresult, Math.min(bestresult.maxNumberOfItems, roomForItem));
+    }
+
+    /**
+     * @return the module's own inventory view (e.g. GT battery slots for the electric manager), or null if the module
+     *         in that slot uses the pipe's normal inventory
+     */
+    public IModuleInventory getModuleInventory(int moduleSlot) {
+        LogisticsModule module = getSubModule(moduleSlot);
+        return module instanceof IModuleInventoryOverride override ? override.getModuleInventory() : null;
     }
 
     @Override

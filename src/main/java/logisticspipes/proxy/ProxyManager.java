@@ -32,6 +32,7 @@ import logisticspipes.LPConstants;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.asm.wrapper.LogisticsWrapperHandler;
 import logisticspipes.blocks.LogisticsSolidTileEntity;
+import logisticspipes.interfaces.IModuleInventory;
 import logisticspipes.network.LPDataInputStream;
 import logisticspipes.network.LPDataOutputStream;
 import logisticspipes.pipes.basic.CoreUnroutedPipe;
@@ -653,6 +654,11 @@ public class ProxyManager {
                 public double injectEnergyUnits(TileEntity tile, ForgeDirection opposite, double d) {
                     return d;
                 }
+
+                @Override
+                public IModuleInventory getElectricItemInventory(TileEntity tile, ForgeDirection side) {
+                    return null;
+                }
             }));
         }
         else{
@@ -715,6 +721,11 @@ public class ProxyManager {
                     @Override
                     public double injectEnergyUnits(TileEntity tile, ForgeDirection opposite, double d) {
                         return d;
+                    }
+
+                    @Override
+                    public IModuleInventory getElectricItemInventory(TileEntity tile, ForgeDirection side) {
+                        return null;
                     }
                 }));
         }
