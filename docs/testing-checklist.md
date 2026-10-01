@@ -7,10 +7,11 @@ has the details. Issue IDs (D1, C8, ...) are from [pattern-crafting.md](pattern-
 Use spark for every performance item and write down before/after numbers. Scale target: ~50k pipes, with routing well
 under one 50 ms tick.
 
-**Last pass: 2026-09-30, dedicated server.** Delivery, client animation, most of the pipe-break rules, pipe rendering,
-full/missing inventory routing, joining networks, the pattern crafting table and satellite MUIs all passed. Blocker:
-**B25**, opening the pattern crafting pipe GUI crashes the dedicated server (fine in singleplayer). Every item marked
-_(B25)_ waits for that fix.
+**Last pass: 2026-10-01, dedicated server.** The B25 fix works: the pattern crafting pipe GUI opens on a server. Also
+passed: the pipe and handheld pattern GUIs, NEI recipe transfer, S1, S7 (slots), D2, and pattern crafting, the MUIs and
+clump transport running on a dedicated server without client-class crashes. D3 doesn't dupe or void, but nothing is
+inserted (B28). The 2026-09-30 pass covered delivery, client animation, most of the pipe-break rules, pipe rendering,
+full/missing inventory routing, joining networks, and the pattern crafting table and satellite MUIs.
 
 ---
 
@@ -26,7 +27,9 @@ Details: [item-transport-rewrite.md](item-transport-rewrite.md).
 - [ ] B23: a clump that turns back at a break is routed on right away, and goes to a default route when there's no
       path. New items sent into a broken corridor take the new path or a default route instead of waiting in the
       retry buffer.
-- [ ] Crafters re-request the items that were dropped. _(B25)_
+- [ ] Crafters re-request the items that were dropped.
+- [ ] B27: at a junction of plain transport pipes, items take a random nearby exit instead of being routed (once
+      that's built).
 
 **Save / unload**
 - [ ] Save and reload with clumps in flight: the items arrive after the reload (restored clumps are pathless, wait ≥20
@@ -61,27 +64,26 @@ Details: [lag-investigation.md](lag-investigation.md), and the known issues in [
 The particle fixes (§2) aren't written yet. For now, `enableParticleFX=false` in the server config turns all LP
 particles and laser packets off (section 7).
 
-## 3. Pattern crafting: fixes to verify in game _(B25)_
+## 3. Pattern crafting: fixes to verify in game
 
 Details: [pattern-crafting.md](pattern-crafting.md) §8.
 
 **Exploits (should all be closed now)**
-- [ ] S1: the crafting table has no update packet any more. Slots and progress sync through MUI.
 - [ ] S2: `RequestTableSetCursorPacket` sent to the server does nothing.
 - [ ] S3: pattern pipe GUI can't be opened or used from a distance or without security access. Satellite renaming
       requires `canConfigurePipe`.
 - [ ] S4: request table packets only act on the table the player has open; client coordinates/dimension are ignored.
 - [ ] S6: `CraftingRequestDebugRequest` only works for ops (or the integrated-server owner).
-- [ ] S7: pattern items can't be put into pattern editor slots. Still check the import size caps.
+- [ ] S7: a huge pattern import (NEI recipe with many large stacks) is capped and doesn't bloat the NBT. Keeping
+      pattern items out of the editor slots already passed.
 
 **Dupes / item loss**
 - [ ] D1: a machine that fits only part of a set: no duplication, the rest of the set is finished before any other push.
       Same with local + satellite targets, and with several satellites.
 - [ ] D1 / C9: reload while a set is partly inserted (`pendingDispatch` isn't persisted). See what happens to the rest
       of the set.
-- [ ] D2: sided inventories (e.g. GT machines, furnace top/side) get items on the correct face, with and without a sneaky
-      upgrade.
-- [ ] D3: two different fluids into a machine with one tank: no dupe, no void.
+- [ ] B28 (after D3): two different fluids into a machine with one tank: in non-blocking mode at least one goes in,
+      still no dupe or void.
 - [ ] D4: stacks over 127 (buffers, requested, lost queue, orders, pattern entries) survive save/reload. Old saves
       without `lpCount` still load.
 - [ ] D6: BLOCKING mode with a clamped short insert becomes a pending set, no dupe.
@@ -108,21 +110,20 @@ Details: [pattern-crafting.md](pattern-crafting.md) §8.
 - [ ] B11: items get stuck when requesting crafts for machines in blocking mode, even when the machine is empty (may be
       C8 or C1/C2).
 - [ ] B12: items aren't dropped from the crafting pipe when it's broken.
-- [ ] B13: items get teleported to satellite pipes instead of routed (satellites insert straight into their machine).
+- [ ] B13: satellite ingredients travel to the crafting pipe, which puts them straight into the satellite's machine.
+      Expected: they travel to the satellite pipe.
 - [ ] B14: excess fluids are voided when the network has no storage for them. Expected: halt, never void.
 
 ## 4. MUI migration and legacy removal
 
 Details: [pattern-crafting.md](pattern-crafting.md) §7 and §8.7.
 
-**Pattern crafting pipe and handheld pattern (shared editor)**
-- [ ] B25: the pipe GUI opens on a dedicated server without crashing.
-- [ ] Pipe GUI: edit patterns, assign satellites, cancel, return inputs, change blocking mode. All changes reach the
-      server and survive a reload. _(B25)_
-- [ ] Handheld pattern GUI: edits the live held stack, the held slot is locked while open.
-- [ ] NEI recipe transfer into the pipe GUI and the handheld GUI.
+The pattern crafting pipe GUI, the handheld pattern GUI and NEI recipe transfer passed on 2026-10-01.
 
 **Old saves**
+- [ ] A world from the LP version in the current GTNH release with crafting pipes/modules, sneaky and disconnection
+      upgrades and the module variants still loads and works after the update. Old crafters still craft. Deprecated
+      items show a removal warning (once those warnings exist).
 - [ ] Worlds with in-progress orders from before the legacy removal still load (`satelliteDeliveries` entries are lost
       on purpose; check nothing else breaks).
 
@@ -133,10 +134,8 @@ Details: [pattern-crafting.md](pattern-crafting.md) §7 and §8.7.
 
 ## 5. General
 
-- [ ] Dedicated server runs pattern crafting, the MUIs and clump transport without client-class crashes. Clump
-      transport and the other MUIs are fine; pattern crafting is blocked by B25.
-- [ ] B17 / G9: without NEI installed, `PatternFluidStack` doesn't throw `NoClassDefFoundError` (expected to fail
-      until fixed).
+- [ ] B17 / G9: without NEI installed, `PatternFluidStack` doesn't throw `NoClassDefFoundError` (low priority; expected
+      to fail until fixed, or NEI becomes a hard dependency).
 
 ## 6. Pipe rendering
 

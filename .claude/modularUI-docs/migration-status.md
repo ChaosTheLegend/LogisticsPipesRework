@@ -41,11 +41,14 @@ _Last verified: 2026-08-06._
 ## Effect of the rework design (2026-09-29)
 
 Per [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md), every GUI moves to ModularUI, but some of the
-modules above are to be removed rather than migrated:
-- `ModuleCrafter` goes, because crafting modules are replaced by the pattern crafting pipe.
+modules above are deprecated rather than migrated:
+- Deprecated modules keep their legacy GUI and get no MUI. They and their GUIs are deleted one major pack version after
+  the rework ships (rework in 2.10 → deleted in 2.11), see "Compatibility with old bases" in
+  `docs/rework-design-decisions.md`. Don't delete those legacy GUIs before then.
+- `ModuleCrafter` is deprecated, because crafting modules are replaced by the pattern crafting pipe.
 - Modules that only duplicate another one with more features become upgrades. The design doc names the extractors and
   item sinks as examples.
   - Likely candidates: `ModuleExtractor` Mk2/Mk3 and `ModuleAdvancedExtractor` MK2/MK3.
   - Possibly also the item sink variants such as `ModuleOreDictItemSink`, since the OreDict filter becomes an upgrade.
-  - The final list is settled under "Rethink modules" in `TODO/roadmap.md` 2c. Wait for it before migrating those GUIs.
+  - The final list is settled under "Rethink modules" in `docs/roadmap.md` 2c. Wait for it before migrating any of these GUIs.
 - Fluid modules (new) for the fluid chassis will need MUI GUIs from the start.

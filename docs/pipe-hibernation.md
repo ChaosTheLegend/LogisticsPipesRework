@@ -51,7 +51,10 @@ All of these must hold:
 - Provider pipes advertise themselves and their content during lazy update, they wake up only when pulling items out
 - Extractors enter hibernation when there's no items to pull and wake up when they find something
 - Suppliers enter hibernation when all the conditions for the supplier are met, if they have a buffer upgrade, the buffer must be filled first before pipe enters the sleeping state
-*idea* - hot upgrade - prevents pipes from entering hibernating state and allows for 0/1 tick item swaps for the supplier, it's an upgrade because this will force the pipe to perform a check every tick
+- **Hot upgrade** (decided in [rework-design-decisions.md](rework-design-decisions.md)): the pipe never hibernates, stays
+  loaded and updates every tick. Works with the buffer upgrade for 0-tick hot swaps (e.g. nuclear reactors). It's an
+  upgrade because the pipe then checks every tick. "Always loaded" may mean the pipe keeps its chunk loaded; not
+  designed yet.
 - Basic pipes/itemsinks sleep if there's no space to put items in
 - Crafting pipes enter sleeping state either when there's no requests/interests OR if the pipe has been waiting for ingredients for a very long time (yet to decide), it wakes up once at least one item arrives
 

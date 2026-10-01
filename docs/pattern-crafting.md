@@ -219,21 +219,21 @@ Legacy tags (see the decision in §10, legacy GUIs get deleted):
 
 | ID | Sev | Status | Issue | Where | Fix idea |
 |---|---|---|---|---|---|
-| S1 | HIGH | **FIXED — packet deleted**; the table GUI syncs slots and progress through MUI | S→C packet `PatternCraftingTableUpdate` processed on server → client-authored NBT replaces table inventories = **item creation**. LP has no packet direction guard. | `network/packets/block/PatternCraftingTableUpdate:40`, table `readUpdatePayload:176` | `if (!MainProxy.isClient(player.worldObj)) return;` — consider generic S2C-only flag on ModernPacket |
+| S1 | HIGH | **FIXED — packet deleted** (tested in game 2026-10-01); the table GUI syncs slots and progress through MUI | S→C packet `PatternCraftingTableUpdate` processed on server → client-authored NBT replaces table inventories = **item creation**. LP has no packet direction guard. | `network/packets/block/PatternCraftingTableUpdate:40`, table `readUpdatePayload:176` | `if (!MainProxy.isClient(player.worldObj)) return;` — consider generic S2C-only flag on ModernPacket |
 | S2 | HIGH | **FIXED — `PacketGuards.isOnClient`** · _PARTLY LEGACY: the packet goes away when the request table moves to MUI_ | `RequestTableSetCursorPacket.processPacket` → `player.inventory.setItemStack(getStack())` on server = **item creation**. | `crafting/requesttable/...RequestTableSetCursorPacket:23` | same client-only guard |
 | S3 | HIGH | **FIXED** — the legacy packets are deleted along with the legacy GUI; the MUI open path checks `settings.openGui`; `PatternSatelliteSetName` requires `canConfigurePipe` (≤8 blocks + security) | Pattern pipe packets have no distance/security/open-container check. `PatternPipeSelectPacket` opens the legacy container remotely → steal/swap patterns. Cancel/ReturnInputs/Mode/SlotAction → remote grief. MUI open path (CoreRoutedPipe:~1029) skips `settings.openGui`. | `network/packets/gui/Pattern*` | require `player.openContainer` bound to this pipe (or distance ≤64 + security); don't reopen GUI from select |
 | S4 | HIGH | **FIXED — all request table C→S packets resolve the table from `player.openContainer` (`PacketGuards.getOpenRequestTable`), client coords/dimension ignored** · _PARTLY LEGACY + MUI-REQ: the packets go away; MUI sync handlers must keep the bound-to-open-container rule_ | Request table interact/submit/refresh packets: no open-container check, client-supplied dimension → pull items from any loaded table anywhere. | `RequestTableNetworkInteractPacket:58`, `RequestTableSubmitPacket:41`, `RequestTableRefreshPacket:44` | require open `RequestTableContainer` for that table; use `player.worldObj` |
 | S5 | MED-HIGH | C | Satellites: no network/ownership check — ingredients teleported into any satellite anywhere; selector sends **every** satellite (coords/dim/name) on server to any player. | `M` dispatch ~2801/2808, `SyncHandler.applySatellite:384`, `getKnownSatellitesFor` | require router reachability at assign + dispatch; filter list to player's network |
 | S6 | MED | **FIXED — `PacketGuards.isPrivileged` (op or integrated-server owner)** | `CraftingRequestDebugRequest` packet: anyone can dump/clear all players' requests. | `request/debug/...` | op-only |
-| S7 | LOW | C · _slots part FIXED: `EditedPatternInventory` rejects pattern items; import caps still to check_ | Pattern NBT unbounded: client import / phantom slots / nested patterns (B18) can bloat NBT until kick. | `PatternRecipeImport`, `PatternInventory.isItemValidForSlot:85` | reject `ItemPattern` in slots, cap sizes |
+| S7 | LOW | C · _slots part FIXED and tested in game (2026-10-01): `EditedPatternInventory` rejects pattern items; import caps still to check_ | Pattern NBT unbounded: client import / phantom slots / nested patterns (B18) can bloat NBT until kick. | `PatternRecipeImport`, `PatternInventory.isItemValidForSlot:85` | reject `ItemPattern` in slots, cap sizes |
 
 ### 8.2 Item duplication / loss
 
 | ID | Sev | Status | Issue | Where | Fix idea |
 |---|---|---|---|---|---|
 | D1 | HIGH |  **FIXED** — every inserted amount leaves the buffer per assignment; a partly inserted set becomes `pendingDispatch` and is finished before any other push; satellite amounts merged per satellite+item for the room check  | **Partial dispatch duplicates.** Assignments inserted one-by-one; first short insert returns false but already-inserted items stay in machine and in buffer (`removeBufferedPlan` only on success) → reinserted later. Same for local-then-satellite in `dispatch()`; satellite capacity checked per assignment not cumulatively. | `AIH:231-244`, `M:~2786-2815`, `M:~1938-1953` | subtract actually-inserted amounts from buffer per assignment; check/reserve satellites before local insert; cumulative sat simulation |
-| D2 | HIGH |  **FIXED** — `getInsertionOrientation` = sneaky side, else `orientation.getOpposite()`; snapshot, room, transactor and fluid fill all use it  | **Wrong face for sided inventories.** `getInsertionOrientation` returns `tile.orientation` (pipe→tile, far face); TransactorSimple uses it for `getAccessibleSlotsFromSide`/`canInsertItem`. Capacity check uses the correct `opposite`. Core LP uses `getPointedOrientation().getOpposite()` (CoreRoutedPipe:1690). → stuck or (multi-ingredient) D1. Sneaky upgrade side also ignored by snapshot. | `M:1329-1335`, `AIH:449` | return `tile.orientation.getOpposite()` when no sneaky; same side everywhere |
-| D3 | HIGH |  **FIXED** — `canFitFluids`: same fluids merged, each simulated, several distinct fluids must also fit the reported tanks together (no tank info → one fluid at a time)  | Fluid capacity simulated per fluid against empty handler → 2 fluids into 1 tank both pass, second fails for real → D1. `availablePatternSetsForFluids` over-reports. | `AIH:208-219, 247-268` | cumulative check / insert fluids first and abort cleanly |
+| D2 | HIGH |  **FIXED, tested in game 2026-10-01** — `getInsertionOrientation` = sneaky side, else `orientation.getOpposite()`; snapshot, room, transactor and fluid fill all use it  | **Wrong face for sided inventories.** `getInsertionOrientation` returns `tile.orientation` (pipe→tile, far face); TransactorSimple uses it for `getAccessibleSlotsFromSide`/`canInsertItem`. Capacity check uses the correct `opposite`. Core LP uses `getPointedOrientation().getOpposite()` (CoreRoutedPipe:1690). → stuck or (multi-ingredient) D1. Sneaky upgrade side also ignored by snapshot. | `M:1329-1335`, `AIH:449` | return `tile.orientation.getOpposite()` when no sneaky; same side everywhere |
+| D3 | HIGH |  **FIXED** — `canFitFluids`: same fluids merged, each simulated, several distinct fluids must also fit the reported tanks together (no tank info → one fluid at a time). _In game (2026-10-01): no dupe or void, but nothing is inserted; at least one fluid should go in in non-blocking mode (B28)_  | Fluid capacity simulated per fluid against empty handler → 2 fluids into 1 tank both pass, second fails for real → D1. `availablePatternSetsForFluids` over-reports. | `AIH:208-219, 247-268` | cumulative check / insert fluids first and abort cleanly |
 | D4 | HIGH |  **FIXED for pattern data** — `PatternItemStack.writeItem/readItem` add an int `lpCount` (buffers, requested, lost queue, pattern entries, orders/promises via `PP`); request table stacks still open (left for the request table migration)  | **Byte `Count`**: ItemStack NBT in 1.7.10 stores Count as byte. Buffers/requested/orders/promises with >127 items truncate or go ≤0 on save → voided or restore throws forever (L3). Also `MULTIPLY_TWO` 64→128 → -128 → ingredient vanishes; request table stack upgrades (up to 2048) lose items on save & vanilla slot sync. | `PatternItemStack.writeToNBT`, `PP:374`, `Ord:646`, `SimpleStackInventory.writeToNBT:171`, `PatternPipeSlotActionPacket:83`, `RequestTablePipe:131` | write int amount separately; clamp multiply (`canMultiply`); cap/sync table stacks. *Check no GTNH mixin widens Count.* |
 | D5 | MED | C | Snapshot merge uses NBT-blind `equalsForCrafting`; real inventory uses exact equality → over-estimates room → D1. Merging also skips `isItemValidForSlot`. `amountOf`/`BH.amount(ItemIdentifier)` NBT-blind while `remove` exact. | `AIH:365, 500` | exact equality + validity check |
 | D6 | MED |  C · _mitigated by D1: a clamped short insert now becomes a pending set, no dupe_  | BLOCKING insert clamp (`missingFor`) not considered by `canInsertPatternIngredients` → short insert → D1. | `AIH:424-428` | apply clamp in check too |
@@ -355,7 +355,9 @@ Still legacy (no MUI yet): `RequestTableGui`.
 ### 8.8 Checked, no issue
 
 - Dedicated server: no client-class crash path found in pipe/module/satellites/MUI (client classes only behind
-  `isClient()` / suppliers / `@SideOnly`; HUD constructed server-side like upstream `HUDCrafting`).
+  `isClient()` / suppliers / `@SideOnly`; HUD constructed server-side like upstream `HUDCrafting`). _Missed a
+  client-only **method**: the pipe MUI's target icon called `Block.getPickBlock` on the server (B25, fixed
+  and tested in game 2026-10-01). Calls into stripped `@SideOnly(CLIENT)` methods need a bytecode scan, not a class-import check._
 - Threading: module state server-thread only; DelayQueue/debug deque thread-safe.
 - Malformed pattern NBT: null items/unknown fluids return null and are null-checked; satellite arrays bounds-checked.
 - Request table shift-click / result slot: no dupe found.
@@ -394,6 +396,8 @@ Still legacy (no MUI yet): `RequestTableGui`.
 - Items get stuck when trying to request crafts for the machines in blocking mode, even when machine is empty
 - Items don't get dropped from the crafting pipe on break
 - Items get teleported to satellite pipes instead of traveling to them when requested
+  _B13 in [bug-list.md](bug-list.md): the ingredients travel to the crafting pipe, which then puts them into the
+  satellite's machine. They should travel to the satellite pipe._
 - Pattern crafting pipe voids excess fluids if there's no storage for them in the network, in this case it should hault, and either continue crafting in non-blocking mode, or error and wait untill there's space available, nothing should be voided
 - ~~satellite name field doesn't update and errors when trying to give it a name (likely permission check fail)~~
 - ~~shift-click transfering items that already present in pattern crafting table doesn't correctly display them in gui, this leads to several bugs, such as wrong crafts and missing items~~
@@ -432,9 +436,9 @@ Still legacy (no MUI yet): `RequestTableGui`.
 
 - **The rework design is in [rework-design-decisions.md](rework-design-decisions.md)** and takes precedence over this doc.
   What it means for pattern crafting:
-  - The old crafting modules (`ModuleCrafter`, the legacy crafting pipe) are removed; the pattern crafting pipe and patterns
-    replace them. Issues that only occur when an old crafter shares a request node with a staged promise (C4, part of C3)
-    stop mattering once it is removed.
+  - The old crafting modules (`ModuleCrafter`, the legacy crafting pipe) are deprecated; the pattern crafting pipe and patterns
+    replace them for new builds. Placed old crafters keep working in old bases (simple, non-blocking), so issues where an
+    old crafter shares a request node with a staged promise (C4, part of C3) still matter, at a lower priority.
   - OreDict and NBT options in crafting pipes are unlocked by the new **OreDict filter** and **NBT filter** upgrades. Today
     they are per-pattern flags (`patternOreDictSubstitution`, `patternIgnoreNbt`) that anyone can set.
   - The advanced satellite upgrade is removed; its behaviour is on by default.
@@ -442,12 +446,20 @@ Still legacy (no MUI yet): `RequestTableGui`.
     pattern crafting table (its 4 upgrade slots already take speed upgrades) and extraction.
   - The buffer upgrade replaces the always-on ingredient buffering, and is also the prestock. Without it, pipes
     re-request items every time.
-  - Items only teleport pipe to pipe. The known issue "items get teleported to satellite pipes" is about satellites
-    inserting straight into their machine (`insertPatternInput`) instead of the items being routed to them, not about the
-    transport rewrite.
+  - Items only teleport pipe to pipe. The known issue "items get teleported to satellite pipes" (B13) is about the
+    crafting pipe inserting satellite ingredients straight into the satellite's machine (`insertPatternInput`) instead
+    of the items travelling to the satellite pipe, not about the transport rewrite.
+  - Satellite and fluid satellite **modules** (new) work like the satellite pipes, so a chassis can be a satellite.
+  - Crafting pipes get a toggle to mark ingredients that aren't consumed or that lose durability (tools). That is the
+    player-side answer to D7 (re-extracting catalysts and containers) and part of C8 (permanent contents keep
+    BLOCKING locked).
+  - The sneaky upgrade is removed. The insertion side is set per connection with a screwdriver (grid overlay), so
+    `getInsertionOrientation` (D2) and the extraction side (C20) will read it from there.
   - Upgrades go in without a pipe controller through the side upgrade GUI, at most 4.
   - The **Legacy Wrench** is for debugging only and isn't craftable. It does not bring back the legacy GUIs deleted in
-    §8.7; it only opens legacy GUIs that still exist. Deleting legacy GUIs once MUI covers them stays the rule.
+    §8.7; it only opens legacy GUIs that still exist. Deleting legacy GUIs once MUI covers them stays the rule. Exception: GUIs of deprecated modules
+    (e.g. the old crafting modules) stay as legacy GUIs until those modules are deleted, one major pack version after
+    the rework ships (see "Compatibility with old bases" in the decisions).
 - **Legacy GUIs are deprecated** (prototyping only) and will be deleted. MUI migration is the priority; don't spend
   effort keeping legacy GUI paths compatible. Bugs that exist only in legacy paths → delete the path once MUI covers it.
 - In new MUIs add an upgrade side gui with 4 slots for upgrades. this includes pattern crafting table

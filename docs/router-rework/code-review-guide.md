@@ -1,11 +1,11 @@
 # Junction-Graph Router — Code Guide & Reviewer Notes
 
-Companion to `agent-implementation-brief(1).md` (the spec), `developer-guide(1).md` (the design rationale) and
+Companion to `agent-implementation-brief.md` (the spec), `developer-guide.md` (the design rationale) and
 `benchmark-results.md` (numbers). This file explains what every class does and what deserves a careful look.
 
-The rework design choices ([docs/rework-design-decisions.md](../../docs/rework-design-decisions.md)) change parts of this
+The rework design choices ([docs/rework-design-decisions.md](../rework-design-decisions.md)) change parts of this
 router; see §5. The item transport built on top of it is in
-[docs/item-transport-rewrite.md](../../docs/item-transport-rewrite.md).
+[docs/item-transport-rewrite.md](../item-transport-rewrite.md).
 
 - Production code: `src/main/java/logisticspipes/routing/astar/`
 - Tests: `src/test/java/logisticspipes/routing/astar/`
@@ -247,7 +247,7 @@ requests with extras (`checkExtras`), CC broadcast (`getIRoutersByCost`), chunk 
 
 ## 5. Effect of the rework design decisions
 
-From [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md), which takes precedence over this guide:
+From [docs/rework-design-decisions.md](../rework-design-decisions.md), which takes precedence over this guide:
 
 - **Only LP pipes route.** BuildCraft, Thermal Dynamics and other mods' pipes won't be supported for routing.
   - `CorridorScanner` should stop at any non-LP pipe. Its `IRouteProvider` branch (TD ducts) and the foreign-pipe
@@ -258,7 +258,7 @@ From [docs/rework-design-decisions.md](../../docs/rework-design-decisions.md), w
 - **GregTech pipes** are not corridors. They are buffers next to LP pipes, handled like an adjacent inventory.
 - **The Inv. System Connector is kept and upgraded**, so direct connections (`IDirectRoutingConnection`, the scanner's
   `isDirectConnection` path) stay part of routing.
-- **Side-block (disconnection) upgrades are removed**, and a GT crowbar blocks sides instead. The router's side
+- **Side-block (disconnection) upgrades are removed**, and shift+wrench disconnects sides instead. The router's side
   disconnection (`sideDisconnected`, `isSideDisconneceted`) must read the new per-side state. Security separation is
   unchanged.
 - **Travel speed comes from tiered transport controller blocks** (like the power junction; the top tier is instant), not

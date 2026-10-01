@@ -55,9 +55,12 @@ Those decisions take precedence over this doc. What they mean for transport:
   - **Open:** how a controller's speed applies (the whole network or a region; what happens with several tiers in one
     network; whether it costs power), and whether the Default/Passive/Active modes keep different speeds.
   - With speed only changing at a controller, a run of pass-through junctions is always one scheduled hop.
-- **Sneaky upgrades are removed** (the insertion side is set with a GT screwdriver). **Side-block (disconnection) upgrades are
-  removed** (a GT crowbar sets them). The delivery step in `handleTileReachedServer` (sneaky orientation,
-  `getCombinedSneakyOrientation`) changes with it.
+- **Sneaky upgrades are removed.** Holding a screwdriver shows a grid overlay on the pipe, and the sneaky side is set
+  per connection with it. **Side-block (disconnection) upgrades are removed**: shift+wrench shows the same overlay
+  to connect or disconnect each side. The delivery step in
+  `handleTileReachedServer` (sneaky orientation, `getCombinedSneakyOrientation`) and the scanner's connection checks
+  read these per-side settings instead. Sneaky and disconnection upgrades already installed in old bases are migrated
+  to the per-side settings, so their pipes behave the same after the update.
 - **The inventory system connector (ISC) is re-enabled and upgraded.** It links two networks through *any* buffer (chests,
   ender chests, pipelines, minecarts, rockets). Its direct connection stays opaque to clumps; items enter the buffer at
   one end and are re-injected at the other.
@@ -142,6 +145,8 @@ is being dropped. Found:
   rendering and still arrives at the next routed pipe.
 - B23: after a break, items wait at the junction or in the retry buffer instead of rerouting, and wait forever when
   there's no path. They should take the new path or a default route.
+- B27 (minor): a junction made of plain transport pipes still routes items to the correct exit, because the corridor
+  runs straight through it. Wanted: a random nearby exit there, so routing needs routed pipes at junctions.
 
 What's left to test (save/unload, config switch, spark) is in [testing-checklist.md](testing-checklist.md) §1.
 
@@ -153,7 +158,7 @@ What's left to test (save/unload, config switch, spark) is in [testing-checklist
 2. Destination assignment with one-to-many distance queries (`getDistancesTo`) instead of one query per sink.
 3. Move the final delivery step onto the event queue too.
 4. **Transport controller speed:** remove the speed-upgrade effect and `readjustSpeed` from transport (the upgrade itself
-   is reworked in the upgrade phase of `TODO/roadmap.md`). Read the ticks per pipe from the network's transport controller
+   is reworked in Phase 2 of [roadmap.md](roadmap.md)). Read the ticks per pipe from the network's transport controller
    tier. The instant tier delivers in the same tick along the whole path (needs phase 1).
 5. **LP-only routing:** the scanner stops at foreign pipes. Remove the BC/TD transport interop and the per-tick
    simulation, then drop the `itemClumpTransport` switch.

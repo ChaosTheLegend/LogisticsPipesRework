@@ -1,16 +1,14 @@
 package logisticspipes.gui.modularUI.pipes.patterncrafting;
 
 import java.io.IOException;
-import java.util.Objects;
 
 import net.minecraft.block.Block;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
-
-import com.cleanroommc.modularui.network.NetworkUtils;
 
 import logisticspipes.crafting.PatternCraftingHudState;
 import logisticspipes.network.LPDataInputStream;
@@ -125,10 +123,13 @@ public class PatternCraftingSyncHandler extends PatternEditorSyncHandler {
         BlockingMode mode = pipe.getBlockingMode();
         boolean fixed = pipe.isBlockingModeFixed();
         AdjacentTile target = pipe.getConnectedInventoryTile();
-        ItemStack stack = target == null ? null : getDisplayStack(target.tile);
+        TileEntity tile = target == null || target.tile == null || target.tile.getWorldObj() == null ? null
+                : target.tile;
         ForgeDirection side = target == null ? ForgeDirection.UNKNOWN : target.orientation;
         int unsupported = computeUnsupportedPatterns();
-        String stateKey = mode + "|" + fixed + "|" + side + "|" + unsupported + "|" + describe(stack);
+        // the display stack is built on the client (Block.getPickBlock calls the client-only Block.getItem), so only
+        // the target's position goes over the wire; block and meta are in the key to resend when the target changes
+        String stateKey = mode + "|" + fixed + "|" + side + "|" + unsupported + "|" + describe(tile);
         if (init || !stateKey.equals(lastSentStateKey)) {
             lastSentStateKey = stateKey;
             syncToClient(S_STATE, buf -> {
@@ -136,7 +137,12 @@ public class PatternCraftingSyncHandler extends PatternEditorSyncHandler {
                 buf.writeBoolean(fixed);
                 buf.writeVarIntToBuffer(side.ordinal());
                 buf.writeVarIntToBuffer(unsupported);
-                NetworkUtils.writeItemStack(buf, stack);
+                buf.writeBoolean(tile != null);
+                if (tile != null) {
+                    buf.writeInt(tile.xCoord);
+                    buf.writeInt(tile.yCoord);
+                    buf.writeInt(tile.zCoord);
+                }
             });
         }
     }
@@ -150,7 +156,9 @@ public class PatternCraftingSyncHandler extends PatternEditorSyncHandler {
                 blockingModeFixed = buf.readBoolean();
                 targetSide = ForgeDirection.getOrientation(buf.readVarIntFromBuffer());
                 unsupportedPatterns = buf.readVarIntFromBuffer();
-                targetStack = NetworkUtils.readItemStack(buf);
+                targetStack = buf.readBoolean()
+                        ? getDisplayStack(pipe.getWorld(), buf.readInt(), buf.readInt(), buf.readInt())
+                        : null;
             }
             default -> super.readOnClient(id, buf);
         }
@@ -185,33 +193,42 @@ public class PatternCraftingSyncHandler extends PatternEditorSyncHandler {
         return mask;
     }
 
-    private static ItemStack getDisplayStack(TileEntity tile) {
-        if (tile == null || tile.getWorldObj() == null) {
+    /**
+     * Client only: {@link Block#getPickBlock} calls {@code Block.getItem(World, int, int, int)}, which is
+     * {@code @SideOnly(CLIENT)} and stripped on a dedicated server ({@code NoSuchMethodError}).
+     */
+    private static ItemStack getDisplayStack(World world, int x, int y, int z) {
+        if (world == null) {
             return null;
         }
-        Block block = tile.getWorldObj().getBlock(tile.xCoord, tile.yCoord, tile.zCoord);
+        Block block = world.getBlock(x, y, z);
         Item item = Item.getItemFromBlock(block);
         if (item == null) {
             return null;
         }
         try {
-            ItemStack pick = block.getPickBlock(null, tile.getWorldObj(), tile.xCoord, tile.yCoord, tile.zCoord);
+            ItemStack pick = block.getPickBlock(null, world, x, y, z);
             if (pick != null && pick.getItem() != null) {
                 return pick;
             }
         } catch (RuntimeException ignored) {
             // some blocks require a real ray trace result; fall back to the damage value below
         }
-        return new ItemStack(item, 1, block.getDamageValue(tile.getWorldObj(), tile.xCoord, tile.yCoord, tile.zCoord));
+        return new ItemStack(item, 1, block.getDamageValue(world, x, y, z));
     }
 
-    private static String describe(ItemStack stack) {
-        if (stack == null) {
+    private static String describe(TileEntity tile) {
+        if (tile == null) {
             return "";
         }
-        return Item.getIdFromItem(stack.getItem()) + ":"
-                + stack.getItemDamage()
+        World world = tile.getWorldObj();
+        return tile.xCoord + ","
+                + tile.yCoord
+                + ","
+                + tile.zCoord
                 + ":"
-                + Objects.hashCode(stack.getTagCompound());
+                + Block.getIdFromBlock(world.getBlock(tile.xCoord, tile.yCoord, tile.zCoord))
+                + ":"
+                + world.getBlockMetadata(tile.xCoord, tile.yCoord, tile.zCoord);
     }
 }

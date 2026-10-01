@@ -89,6 +89,14 @@ Template:
 - **Notes:** Drawers and barrels stop advertising when full. An AE interface behind a sink keeps being chosen after it
   fills up. Likely its inventory handler reports room it doesn't have.
 
+### B27: Junctions made of plain transport pipes route items like routed pipes
+- **Status:** open (minor, wanted for flavour)
+- **Found:** 2026-09-30, in game
+- **Where:** `CorridorScanner` / `ClumpTransit` (corridors run through plain transport pipe junctions)
+- **Notes:** An item passing a junction built from plain (unrouted) transport pipes still takes the correct exit, as if
+  the junction were a routed pipe. Not critical. Wanted: at a plain transport pipe junction the item takes a random
+  nearby exit, so routing needs routed pipes at the junctions.
+
 ## Rendering
 
 ### B7: Pipe model doesn't update when a neighbour's shape changes
@@ -99,6 +107,14 @@ Template:
   the connection/texture state or the solid sides change. A neighbour that changes shape without changing either
   (e.g. one non-solid block replaced by another with different bounds) keeps the old stretch until something else
   invalidates the cache.
+
+### B30: The LAN host's render config overrides other clients' config
+- **Status:** needs repro
+- **Found:** before 2026-09-29 (project board, moved from the old `TODO/rework.md`)
+- **Where:** render config sync
+- **Repro:** open a world to LAN, join from a second client with different LP render settings.
+- **Notes:** The world owner's render settings apply to the clients that joined. Render settings should stay
+  per client.
 
 ## Performance
 
@@ -124,6 +140,15 @@ Template:
 - **Notes:** `getOrCreateRouter` scanned every known router for each pipe that loaded, O(n²). Both managers use a
   position index now. Confirm with spark.
 
+### B32: Placing a pipe on a large network causes a short, severe lag spike
+- **Status:** needs repro (may be fixed by the junction-graph router)
+- **Found:** before 2026-09-29 (project board, moved from the old `TODO/rework.md`)
+- **Where:** routing table rebuild on a network change
+- **Repro:** on a large network, place any pipe other than a plain transport pipe.
+- **Notes:** Reported before the junction-graph router ([router-rework/](router-rework/)), which updates routes
+  incrementally. Check with spark whether it still happens. Worth fixing before the request handler work
+  ([roadmap.md](roadmap.md) Phase 1), which puts more load on routing.
+
 ## Pattern crafting (found in game)
 
 Reported in [pattern-crafting.md](pattern-crafting.md) §10. The detailed issue table in §8 has candidate causes.
@@ -140,13 +165,30 @@ Reported in [pattern-crafting.md](pattern-crafting.md) §10. The detailed issue 
 ### B13: Items teleport to satellite pipes instead of travelling to them
 - **Status:** open
 - **Found:** in game
-- **Notes:** Satellites insert straight into their machine.
+- **Notes:** Ingredients for a satellite travel to the crafting pipe, and the crafting pipe then puts them straight
+  into the satellite's machine (`insertPatternInput`). Expected: they travel to the satellite pipe and the satellite
+  inserts them.
 
 ### B14: Pattern crafting pipe voids excess fluids when the network has no storage for them
 - **Status:** open
 - **Found:** in game
 - **Notes:** Expected: halt, then either keep crafting in non-blocking mode or wait with an error until there's space.
   Nothing should be voided.
+
+### B28: Two fluids for a one-tank machine: nothing is inserted
+- **Status:** open
+- **Found:** 2026-10-01, in game (while testing D3)
+- **Where:** `AdjacentInventoryHandler.canFitFluids` (D3 fix)
+- **Repro:** a pattern with two different fluid inputs, target machine with a single tank.
+- **Notes:** The D3 fix works: no dupe, no void. But neither fluid gets inserted. Expected: in non-blocking mode at
+  least one fluid goes in.
+
+### B31: Logistics pipes can't supply several liquids into one input
+- **Status:** needs repro
+- **Found:** before 2026-09-29 (project board, moved from the old `TODO/rework.md`)
+- **Where:** fluid supply / fluid crafting
+- **Notes:** A machine input that takes several liquids can't be supplied with more than one of them. May overlap
+  with B28 and with the planned multi-filter basic fluid pipe ([roadmap.md](roadmap.md) 4a).
 
 ## GUI and compatibility
 
@@ -164,22 +206,24 @@ Tracked in [pattern-crafting.md](pattern-crafting.md) §8.6. Expected to fail un
 - **In game (2026-09-30):** works in the chassis, doesn't work in the pattern crafting pipe.
 
 ### B17: Crash without NEI installed
-- **Status:** open (G9)
+- **Status:** open, low-importance (G9)
 - **Where:** `PatternFluidStack` calls NEI's `StackInfo` from common code → `NoClassDefFoundError`
-
-### B25: Opening the pattern crafting pipe GUI crashes the dedicated server
-- **Status:** open, **blocker**
-- **Found:** 2026-09-30, in game (dedicated server; singleplayer is fine)
-- **Where:** pattern crafting pipe MUI (`PipePatternCraftingMui`, `PatternCraftingSyncHandler`), most likely a
-  client-only class loaded on the server
-- **Notes:** Blocks every pattern crafting test on a server (testing checklist §3–§6). Get the crash report. §8.8 of
-  pattern-crafting.md found no client-class path by reading the code, so the cause is somewhere it didn't look.
+- **Notes:** This version is made for GTNH, which always has NEI. Worst case, NEI becomes a hard dependency.
 
 ### B26: Upgrade side GUI gaps are too large
 - **Status:** open (minor)
 - **Found:** 2026-09-30, in game ([pattern-crafting.md](pattern-crafting.md) §10 minors)
 - **Where:** `PipeGuiFactory.getUpgradeGui`
 - **Notes:** Make the gaps smaller and check the styling.
+
+## Other
+
+### B29: Using a wrench on a torch's bottom face mounts it on a crafting pipe
+- **Status:** needs repro
+- **Found:** before 2026-09-29 (project board, moved from the old `TODO/rework.md`)
+- **Where:** pipe block placement / wrench interaction
+- **Notes:** The board entry was "Torch can be mounted on a crafting (any?) pipe by using a wrench on the bottom face
+  of the torch". Check whether this happens with other pipes too, and whether the wrench should do this at all.
 
 ---
 
@@ -256,3 +300,16 @@ Move entries here when they're fixed, with the commit or date.
   - The suggested fallback above, for all routed pipes: when an item is out of retries, it goes to the nearest default
     route that has physical room (ignoring room promised to items in transit). It only drops if there's none
     (`LogisticsManager.assignDefaultRouteFor`).
+
+### B25: Opening the pattern crafting pipe GUI crashes the dedicated server
+- **Status:** fixed (2026-10-01), tested in game (dedicated server)
+- **Found:** 2026-09-30, in game (dedicated server; singleplayer is fine)
+- **Where:** `PatternCraftingSyncHandler.detectAndSendChanges` → `getDisplayStack`
+- **Cause:** To show the crafting target's icon, the server built an item stack with `Block.getPickBlock`. That calls
+  `Block.getItem(World, int, int, int)` and `Block.isFlowerPot()`, which are `@SideOnly(CLIENT)` and are removed on a
+  dedicated server, so the call threw `NoSuchMethodError`. That's an `Error`, so the `catch (RuntimeException)` around it
+  didn't catch it. It wasn't a client class being loaded, which is why the check in pattern-crafting.md §8.8 missed it.
+- **Fix:** The server sends only the target's position (plus block id and meta, to know when to resend). The client
+  builds the icon stack from its own world. A bytecode scan of the whole mod for calls into `@SideOnly(CLIENT)`
+  vanilla/Forge methods (up to 3 calls deep) finds nothing else outside rendering, GUI drawing and tooltip code. The
+  scan doesn't cover other mods' client-only methods (GT, ModularUI).
