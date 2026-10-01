@@ -24,6 +24,8 @@ public class PatternHandler {
     private List<PatternRecipeSnapshot> recipesBySlot = Collections.emptyList();
     private List<ItemStack> configuredPatterns = Collections.emptyList();
     private Set<ItemIdentifier> ingredientItems = Collections.emptySet();
+    private Set<ItemIdentifier> outputItems = Collections.emptySet();
+    private Set<ItemIdentifier> nonFluidOutputItems = Collections.emptySet();
     private Set<ItemIdentifier> craftedItems = Collections.emptySet();
     private Set<ItemIdentifier> nonFluidCraftedItems = Collections.emptySet();
     private List<ItemIdentifierStack> craftResults = Collections.emptyList();
@@ -88,6 +90,12 @@ public class PatternHandler {
         return ingredientItems;
     }
 
+    /** Includes byproducts so routing can discover extras without advertising them as craft recipes. */
+    public Set<ItemIdentifier> getOutputItems(boolean fluidCraftingSupported) {
+        ensureCache();
+        return fluidCraftingSupported ? outputItems : nonFluidOutputItems;
+    }
+
     public Set<ItemIdentifier> getCraftedItems(boolean fluidCraftingSupported) {
         ensureCache();
         return fluidCraftingSupported ? craftedItems : nonFluidCraftedItems;
@@ -134,7 +142,7 @@ public class PatternHandler {
             return 0;
         }
         int amount = 0;
-        for (IPatternStack result : recipe.getOutputs()) {
+        for (IPatternStack result : recipe.getCraftableOutputs()) {
             if (PatternStackHelper.matches(result, item)) {
                 amount += result.getAmount();
             }
@@ -160,6 +168,8 @@ public class PatternHandler {
         List<PatternRecipeSnapshot> slotRecipes = new ArrayList<>(size());
         List<ItemStack> patterns = new ArrayList<>();
         Set<ItemIdentifier> items = new TreeSet<>();
+        Set<ItemIdentifier> allOutputs = new TreeSet<>();
+        Set<ItemIdentifier> nonFluidOutputs = new TreeSet<>();
         Set<ItemIdentifier> results = new TreeSet<>();
         Set<ItemIdentifier> nonFluidResults = new TreeSet<>();
         List<ItemIdentifierStack> displayResults = new ArrayList<>();
@@ -182,6 +192,15 @@ public class PatternHandler {
                     for (IPatternStack output : recipe.getOutputs()) {
                         ItemIdentifier result = PatternStackHelper.getRoutingItem(output);
                         if (result != null) {
+                            allOutputs.add(result);
+                            if (!recipe.containsFluid()) {
+                                nonFluidOutputs.add(result);
+                            }
+                        }
+                    }
+                    for (IPatternStack output : recipe.getCraftableOutputs()) {
+                        ItemIdentifier result = PatternStackHelper.getRoutingItem(output);
+                        if (result != null) {
                             results.add(result);
                             if (!recipe.containsFluid()) {
                                 nonFluidResults.add(result);
@@ -202,6 +221,8 @@ public class PatternHandler {
         recipesBySlot = Collections.unmodifiableList(slotRecipes);
         configuredPatterns = Collections.unmodifiableList(patterns);
         ingredientItems = Collections.unmodifiableSet(items);
+        outputItems = Collections.unmodifiableSet(allOutputs);
+        nonFluidOutputItems = Collections.unmodifiableSet(nonFluidOutputs);
         craftedItems = Collections.unmodifiableSet(results);
         nonFluidCraftedItems = Collections.unmodifiableSet(nonFluidResults);
         craftResults = Collections.unmodifiableList(displayResults);

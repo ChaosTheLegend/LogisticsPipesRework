@@ -112,6 +112,10 @@ final class PatternCraftingBufferDispatcher {
             ingredientBuffer.remove(ownerReference, assignment.stack(), assignment.stack().getAmount());
         }
         blockingHandler.markDispatched(patternSlot, ownerReference, plan.satelliteBatch());
+        PatternCraftingOrder order = PatternCraftingInstanceRegistry.find(ownerReference);
+        if (order != null) {
+            order.ingredientsDispatched(insertedSets);
+        }
         module.debugEvent(
             "BUFFER",
             "push slot=%d buffer after insert remainingSets=%d runningCraft=%d adjacentBatch=%s",

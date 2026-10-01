@@ -189,6 +189,10 @@ class PatternCraftingResultExtractor {
     private int maxExtractableItemAmount(LogisticsItemOrder order, int itemsLeft) {
         int maxToSend = Math.min(itemsLeft, order.getAmount());
         maxToSend = Math.min(maxToSend, order.getResource().getItem().getMaxStackSize());
+        PatternCraftingOrder source = PatternCraftingInstanceRegistry.find(order);
+        if (source != null) {
+            maxToSend = Math.min(maxToSend, source.extractableOutputAmount());
+        }
         if (module.isOrderDestinationThisModule(order) && order.getInformation() instanceof PatternTargetInformation) {
             PatternCraftingOrder stagedOrder = PatternCraftingMonitorRegistry.find(order);
             if (stagedOrder != null && !stagedOrder.isFullyRequested()) {
@@ -393,6 +397,10 @@ class PatternCraftingResultExtractor {
 
     private int maxExtractableFluidAmount(LogisticsFluidOrder order) {
         int amountToDrain = Math.min(order.getAmount(), Configs.MAX_LOGISTICS_FLUID_TRANSPORT_INNER_CAPACITY / 2);
+        PatternCraftingOrder source = PatternCraftingInstanceRegistry.find(order);
+        if (source != null) {
+            amountToDrain = Math.min(amountToDrain, source.extractableOutputAmount());
+        }
         if (module.isOrderDestinationThisModule(order) && order.getInformation() instanceof PatternTargetInformation) {
             PatternCraftingOrder stagedOrder = PatternCraftingMonitorRegistry.find(order);
             if (stagedOrder != null && !stagedOrder.isFullyRequested()) {

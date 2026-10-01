@@ -35,6 +35,7 @@ public final class PatternRecipeSnapshot {
     private final String[] byproductSatelliteUuids;
     private final int[] fluidByproductSatelliteIds;
     private final String[] fluidByproductSatelliteUuids;
+    private final int mainOutputSlot;
     private final boolean containsFluid;
     private final Map<FluidIdentifier, Integer> fluidIngredientAmounts;
 
@@ -79,6 +80,7 @@ public final class PatternRecipeSnapshot {
             fluidByproductSatelliteUuids[slot] = pattern.getFluidByproductSatelliteUuidForOutputSlot(slot);
         }
         outputs = Collections.unmodifiableList(outputList);
+        mainOutputSlot = pattern.getMainOutputSlot();
         aggregatedInputs = Collections.unmodifiableList(PatternStackHelper.aggregate(inputs));
         containsFluid = PatternStackHelper.containsFluid(inputs) || PatternStackHelper.containsFluid(outputs);
         Map<FluidIdentifier, Integer> fluidAmounts = new HashMap<>();
@@ -125,6 +127,15 @@ public final class PatternRecipeSnapshot {
 
     public IPatternStack getOutput(int slot) {
         return slot < 0 || slot >= outputSlots.length ? null : outputSlots[slot];
+    }
+
+    public int getMainOutputSlot() {
+        return mainOutputSlot;
+    }
+
+    public List<IPatternStack> getCraftableOutputs() {
+        IPatternStack main = getOutput(mainOutputSlot);
+        return main == null ? Collections.emptyList() : Collections.singletonList(main);
     }
 
     public int getResultSlotCount() {

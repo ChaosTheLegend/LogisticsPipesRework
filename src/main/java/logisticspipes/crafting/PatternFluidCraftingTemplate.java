@@ -16,6 +16,10 @@ public class PatternFluidCraftingTemplate extends FluidCraftingTemplate {
     private final FluidResource result;
     private final ICraftFluids crafter;
     private final int patternSlot;
+
+    public int getPatternSlot() {
+        return patternSlot;
+    }
     private final List<ItemByproduct> itemByproducts = new ArrayList<>();
     private final List<FluidByproduct> fluidByproducts = new ArrayList<>();
 

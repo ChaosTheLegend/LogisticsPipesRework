@@ -49,6 +49,7 @@ final class PatternByproductExtractionTargetCache {
         if (!configuredTarget.isConfigured() || pipe.getWorld() == null) {
             return null;
         }
+        configuredTarget = configuredTarget.withSourceReference(null);
         long now = pipe.getWorld().getTotalWorldTime();
         IRouter requester = pipe.getRouter();
         CachedTarget cached = targets.get(configuredTarget);

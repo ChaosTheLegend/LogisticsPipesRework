@@ -4,6 +4,7 @@ import logisticspipes.crafting.patternStack.IPatternStack;
 import logisticspipes.crafting.patternStack.PatternStackHelper;
 import logisticspipes.interfaces.routing.IRequestFluid;
 import logisticspipes.interfaces.routing.IRequestItems;
+import logisticspipes.request.IExtraPromise;
 import logisticspipes.routing.order.IOrderInfoProvider;
 import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.item.ItemIdentifier;
@@ -20,6 +21,12 @@ import java.util.Set;
 
 class PatternCraftingOrder {
 
+    private static final String TRACKS_DISPATCH_TAG = "tracksDispatch";
+    private static final String BYPRODUCT_SETS_TAG = "byproductSets";
+    private static final String DISPATCHED_SETS_TAG = "dispatchedSets";
+    private static final String ORIGINAL_OUTPUT_AMOUNT_TAG = "originalOutputAmount";
+    private static final String INHERITED_OUTPUT_AMOUNT_TAG = "inheritedOutputAmount";
+    private static final String PENDING_BYPRODUCTS_TAG = "pendingByproducts";
     private static final String PRE_REQUESTED_INGREDIENTS_TAG = "preRequestedIngredients";
     private static final String PRE_INPUT_SLOT_TAG = "inputSlot";
     private static final String PRE_AMOUNT_TAG = "amount";
@@ -30,6 +37,12 @@ class PatternCraftingOrder {
     final int resultAmountPerSet;
     final List<PatternCraftingBranch> ingredientBranches;
     int remainingSets;
+    private final List<IExtraPromise> pendingByproducts = new ArrayList<>();
+    private int byproductSets;
+    private int dispatchedSets;
+    private int originalOutputAmount;
+    private int inheritedOutputAmount;
+    private boolean tracksDispatch;
 
     final IOrderInfoProvider outputOrder;
     private final ModulePatternCrafting module;
@@ -50,6 +63,16 @@ class PatternCraftingOrder {
         this.module = module;
         this.requestedIngredient = requestedIngredient;
         this.remainingSets = initialRemainingSets(branch);
+        for (IExtraPromise promise : branch.getByproductPromises()) {
+            if (promise.getProvider() == module) {
+                pendingByproducts.add(promise);
+            }
+        }
+        byproductSets = branch.getCraftingSets();
+        originalOutputAmount = outputOrder.getAsDisplayItem().getStackSize();
+        inheritedOutputAmount = (int) Math.max(0L,
+            (long) originalOutputAmount - (long) remainingSets * resultAmountPerSet);
+        tracksDispatch = true;
         module.debugEvent(
                 "REQUEST",
                 "created staged order slot=%d output=%s branch=%s branchRemaining=%d resultAmountPerSet=%d remainingSets=%d ingredientBranches=%d",
@@ -86,6 +109,36 @@ class PatternCraftingOrder {
                 remainingSets,
                 this.resultAmountPerSet,
                 ingredientBranches.size());
+    }
+
+    /** Registers the byproducts of only the sets handed to the machine by this order. */
+    void ingredientsDispatched(int sets) {
+        if (sets <= 0) {
+            return;
+        }
+        int before = dispatchedSets;
+        dispatchedSets += sets;
+        if (byproductSets <= 0) {
+            return;
+        }
+        for (IExtraPromise pending : pendingByproducts) {
+            int amount = (int) ((long) pending.getAmount() * Math.min(dispatchedSets, byproductSets) / byproductSets
+                - (long) pending.getAmount() * Math.min(before, byproductSets) / byproductSets);
+            if (amount > 0) {
+                IExtraPromise promise = pending.copy();
+                promise.setAmount(amount);
+                module.registerExtras(promise, reference);
+            }
+        }
+    }
+
+    int extractableOutputAmount() {
+        if (!tracksDispatch) {
+            return outputOrder.getAsDisplayItem().getStackSize();
+        }
+        int consumed = originalOutputAmount - outputOrder.getAsDisplayItem().getStackSize();
+        long available = inheritedOutputAmount + (long) dispatchedSets * resultAmountPerSet - consumed;
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE, available));
     }
 
     /**
@@ -237,6 +290,19 @@ class PatternCraftingOrder {
      * Persists runtime-only scheduler state that is not part of the original request tree.
      */
     void writeRuntimeState(NBTTagCompound tag) {
+        tag.setBoolean(TRACKS_DISPATCH_TAG, tracksDispatch);
+        tag.setInteger(BYPRODUCT_SETS_TAG, byproductSets);
+        tag.setInteger(DISPATCHED_SETS_TAG, dispatchedSets);
+        tag.setInteger(ORIGINAL_OUTPUT_AMOUNT_TAG, originalOutputAmount);
+        tag.setInteger(INHERITED_OUTPUT_AMOUNT_TAG, inheritedOutputAmount);
+        NBTTagList byproducts = new NBTTagList();
+        for (IExtraPromise promise : pendingByproducts) {
+            NBTTagCompound promiseTag = new NBTTagCompound();
+            if (PatternCraftingPersistence.writePromise(promiseTag, promise)) {
+                byproducts.appendTag(promiseTag);
+            }
+        }
+        tag.setTag(PENDING_BYPRODUCTS_TAG, byproducts);
         NBTTagList preRequested = new NBTTagList();
         for (Map.Entry<Integer, Integer> entry : preRequestedIngredients.entrySet()) {
             if (entry.getValue() == null || entry.getValue() <= 0) {
@@ -257,6 +323,16 @@ class PatternCraftingOrder {
      * Restores runtime scheduler state saved with a staged order.
      */
     void readRuntimeState(NBTTagCompound tag) {
+        tracksDispatch = tag.getBoolean(TRACKS_DISPATCH_TAG);
+        byproductSets = tag.getInteger(BYPRODUCT_SETS_TAG);
+        dispatchedSets = tag.getInteger(DISPATCHED_SETS_TAG);
+        originalOutputAmount = tag.getInteger(ORIGINAL_OUTPUT_AMOUNT_TAG);
+        inheritedOutputAmount = tag.getInteger(INHERITED_OUTPUT_AMOUNT_TAG);
+        pendingByproducts.clear();
+        NBTTagList byproducts = tag.getTagList(PENDING_BYPRODUCTS_TAG, TAG_COMPOUND);
+        for (int i = 0; i < byproducts.tagCount(); i++) {
+            pendingByproducts.add(PatternCraftingPersistence.readExtraPromise(byproducts.getCompoundTagAt(i)));
+        }
         preRequestedIngredients.clear();
         NBTTagList preRequested = tag.getTagList(PRE_REQUESTED_INGREDIENTS_TAG, TAG_COMPOUND);
         for (int i = 0; i < preRequested.tagCount(); i++) {

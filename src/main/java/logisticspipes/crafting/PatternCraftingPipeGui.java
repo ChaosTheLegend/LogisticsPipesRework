@@ -5,6 +5,7 @@ import logisticspipes.crafting.pattern.ItemPattern;
 import logisticspipes.crafting.pattern.PatternContainer;
 import logisticspipes.crafting.pattern.PatternGuiProvider;
 import logisticspipes.crafting.pattern.PatternSlotLayout;
+import logisticspipes.crafting.pattern.PatternOutputSelection;
 import logisticspipes.crafting.pattern.PipePatternInventory;
 import logisticspipes.crafting.patternStack.IPatternStack;
 import logisticspipes.crafting.patternStack.PatternStackHelper;
@@ -190,6 +191,7 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
         for (int slot = 0; slot < pattern.getResultSlotCount(); slot++) {
             GuiGraphics.drawSlotBackground(mc, guiLeft + layout.outputX(slot), guiTop + layout.outputY(slot));
         }
+        PatternOutputSelection.drawMainOutput(pattern, layout, guiLeft, guiTop);
         drawSatelliteIcons();
         mc.fontRenderer.drawString("Pattern Crafting Pipe", guiLeft + 8, guiTop + 6, 0x404040);
         drawStatusPanel();
@@ -202,11 +204,28 @@ public class PatternCraftingPipeGui extends LogisticsBaseGuiScreen {
             drawHudAmounts();
             drawSatelliteTooltip(mouseX, mouseY);
             drawFlagButtonTooltip(mouseX, mouseY);
+            PatternOutputSelection.drawTooltip(currentPattern(), layout(currentPattern()),
+                guiLeft, guiTop, mouseX, mouseY);
         }
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
+        if (!hasSubGui() && mouseButton == 0 && PatternOutputSelection.isAltDown()) {
+            AbstractPattern pattern = currentPattern();
+            int outputSlot = PatternOutputSelection.hoveredOutput(pattern, layout(pattern),
+                guiLeft, guiTop, mouseX, mouseY);
+            if (outputSlot >= 0) {
+                pattern.setMainOutputSlot(outputSlot);
+                PatternPipeSlotActionPacket packet = PacketHandler.getPacket(PatternPipeSlotActionPacket.class);
+                packet.setTilePos(pipe.container);
+                packet.setPatternSlot(selectedPatternSlot);
+                packet.setAction(PatternSlotActionPacket.Action.SELECT_MAIN_OUTPUT.ordinal());
+                packet.setOutputSlot(outputSlot);
+                MainProxy.sendPacketToServer(packet);
+                return;
+            }
+        }
         if (!hasSubGui()) {
             SatelliteSlot satelliteSlot = getSatelliteHotspotSlot(mouseX, mouseY);
             if (mouseButton == 0 && advancedSatelliteUpgrade && satelliteSlot != null) {

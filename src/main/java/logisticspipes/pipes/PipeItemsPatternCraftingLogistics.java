@@ -579,7 +579,7 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
 
     @Override
     public Set<ItemIdentifier> getSpecificInterests() {
-        return module.getCraftedItems();
+        return module.getOutputItems();
     }
 
     @Override

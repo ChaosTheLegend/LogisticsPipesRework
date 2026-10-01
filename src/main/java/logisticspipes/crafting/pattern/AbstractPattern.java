@@ -19,6 +19,7 @@ import java.util.List;
 @Getter
 public abstract class AbstractPattern {
 
+    private static final String MAIN_OUTPUT_TAG = "patternMainOutputSlot";
     private static final String ITEMS_TAG = "patternItems";
     private static final String SATELLITE_TARGETS_TAG = "patternSatelliteTargets";
     private static final String SATELLITE_TARGET_UUIDS_TAG = "patternSatelliteTargetUuids";
@@ -58,6 +59,40 @@ public abstract class AbstractPattern {
         return PatternStackHelper.aggregate(getOutputs());
     }
 
+    /** Uses the first populated output for patterns that have no explicit selection. */
+    public int getMainOutputSlot() {
+        if (patternStack != null && patternStack.hasTagCompound()
+            && patternStack.getTagCompound().hasKey(MAIN_OUTPUT_TAG)) {
+            int slot = patternStack.getTagCompound().getInteger(MAIN_OUTPUT_TAG);
+            if (slot >= 0 && slot < getResultSlotCount()
+                && getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+                return slot;
+            }
+        }
+        for (int slot = 0; slot < getResultSlotCount(); slot++) {
+            if (getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    public void setMainOutputSlot(int slot) {
+        if (patternStack != null && slot >= 0 && slot < getResultSlotCount()
+            && getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+            getOrCreateTag(patternStack).setInteger(MAIN_OUTPUT_TAG, slot);
+        }
+    }
+
+    public List<IPatternStack> getCraftableOutputs() {
+        IPatternStack main = getPatternStackInSlot(getResultSlotStart() + getMainOutputSlot());
+        List<IPatternStack> outputs = new ArrayList<>();
+        if (getMainOutputSlot() >= 0 && main != null) {
+            outputs.add(main);
+        }
+        return outputs;
+    }
+
     public List<ItemIdentifierStack> getAggregatedIngredients() {
         return toItemIdentifierStacks(getSolidPatternStacks(getAggregatedInputs()));
     }
@@ -70,6 +105,9 @@ public abstract class AbstractPattern {
      * Clears all item and fluid representations stored by this pattern.
      */
     public void clear() {
+        if (patternStack != null && patternStack.hasTagCompound()) {
+            patternStack.getTagCompound().removeTag(MAIN_OUTPUT_TAG);
+        }
         for (int i = 0; i < getItemSlotCount(); i++) {
             setStackInSlot(i, null);
         }
@@ -140,6 +178,10 @@ public abstract class AbstractPattern {
             newList.appendTag(tag);
         }
         root.setTag(ITEMS_TAG, newList);
+        if ((stack == null || stack.getAmount() <= 0) && root.hasKey(MAIN_OUTPUT_TAG)
+            && root.getInteger(MAIN_OUTPUT_TAG) == slot - getResultSlotStart()) {
+            root.removeTag(MAIN_OUTPUT_TAG);
+        }
     }
 
     /**
@@ -341,7 +383,7 @@ public abstract class AbstractPattern {
     }
 
     public ItemStack getPrimaryResultStack() {
-        List<IPatternStack> outputs = getOutputs();
+        List<IPatternStack> outputs = getCraftableOutputs();
         if (!outputs.isEmpty()) {
             return outputs.get(0).makeDisplayItemStack();
         }
@@ -359,8 +401,19 @@ public abstract class AbstractPattern {
         if (outputs.isEmpty()) {
             return;
         }
-        tooltip.add(ChatColor.AQUA + "Results:");
-        addPatternStacksToTooltip(tooltip, outputs, ChatColor.DARK_BLUE);
+        tooltip.add(ChatColor.AQUA + "Main output:");
+        addPatternStacksToTooltip(tooltip, getCraftableOutputs(), ChatColor.DARK_BLUE);
+        List<IPatternStack> byproducts = new ArrayList<>();
+        for (int slot = 0; slot < getResultSlotCount(); slot++) {
+            IPatternStack output = getPatternStackInSlot(getResultSlotStart() + slot);
+            if (slot != getMainOutputSlot() && output != null) {
+                byproducts.add(output);
+            }
+        }
+        if (!byproducts.isEmpty()) {
+            tooltip.add(ChatColor.AQUA + "Byproducts:");
+            addPatternStacksToTooltip(tooltip, byproducts, ChatColor.DARK_BLUE);
+        }
         if (!getInputs().isEmpty()) {
             StringUtils.addShiftAction(tooltip, () -> {
                 tooltip.add(ChatColor.DARK_GREEN + "Ingredients:");

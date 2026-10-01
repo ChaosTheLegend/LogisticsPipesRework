@@ -367,6 +367,10 @@ public class ModulePatternCrafting extends LogisticsGuiModule
         return patternHandler.getCraftedItems(supportsFluidCrafting());
     }
 
+    public Set<ItemIdentifier> getOutputItems() {
+        return patternHandler.getOutputItems(supportsFluidCrafting());
+    }
+
     // ------- DEFAULT OVERRIDES ------ //
     // region DEFAULT OVERRIDES
 
@@ -821,43 +825,51 @@ public class ModulePatternCrafting extends LogisticsGuiModule
     @Override
     public void canProvide(RequestTreeNode tree, RequestTree root, List<IFilter> filters) {
         IResource requested = tree.getRequestType();
-        if (pipe.getPatternFluidOrderManager().hasExtras() && !tree.hasBeenQueried(pipe.getPatternFluidOrderManager())
-            && requested instanceof FluidResource) {
-            FluidIdentifier fluid = ((FluidResource) requested).getFluid();
-            for (LogisticsFluidOrder order : pipe.getPatternFluidOrderManager()) {
+        if (requested instanceof FluidResource fluidResource) {
+            var manager = pipe.getPatternFluidOrderManager();
+            if (!manager.hasExtras() || tree.hasBeenQueried(manager)) {
+                return;
+            }
+            FluidIdentifier fluid = fluidResource.getFluid();
+            Map<PatternByproductTarget, Integer> extras = new LinkedHashMap<>();
+            for (LogisticsFluidOrder order : manager) {
                 if (order.getType() == ResourceType.EXTRA && order.getFluid().equals(fluid)) {
-                    int amount = Math.min(order.getAmount(), tree.getMissingAmount());
-                    if (amount > 0) {
-                        debug("providing extra fluid %s amount=%d for request %s", fluid, amount, requested);
-                        tree.addPromise(new PatternFluidByproductPromise(
-                            order.getFluid(), amount, this, true, order.getByproductTarget()));
-                        tree.setQueried(pipe.getPatternFluidOrderManager());
-                        return;
-                    }
+                    extras.merge(order.getByproductTarget(), order.getAmount(), Integer::sum);
                 }
             }
-            tree.setQueried(pipe.getPatternFluidOrderManager());
-        }
-        if (!pipe.getItemOrderManager().hasExtras() || tree.hasBeenQueried(pipe.getItemOrderManager())) {
+            for (Map.Entry<PatternByproductTarget, Integer> extra : extras.entrySet()) {
+                int amount = Math.min(extra.getValue()
+                    - root.getPromisedByproductAmount(this, fluid.getItemIdentifier(), extra.getKey()),
+                    tree.getMissingAmount());
+                if (amount > 0) {
+                    tree.addPromise(new PatternFluidByproductPromise(fluid, amount, this, true, extra.getKey()));
+                }
+            }
+            tree.setQueried(manager);
             return;
         }
-        for (LogisticsItemOrder order : pipe.getItemOrderManager()) {
-            if (order.getType() == ResourceType.EXTRA
-                && requested.matches(order.getResource().getItem(), IResource.MatchSettings.NORMAL)) {
-                int amount = Math.min(order.getAmount(), tree.getMissingAmount());
+        var manager = pipe.getItemOrderManager();
+        if (!manager.hasExtras() || tree.hasBeenQueried(manager)) {
+            return;
+        }
+        Map<ItemIdentifier, Map<PatternByproductTarget, Integer>> extras = new LinkedHashMap<>();
+        for (LogisticsItemOrder order : manager) {
+            ItemIdentifier item = order.getResource().getItem();
+            if (order.getType() == ResourceType.EXTRA && requested.matches(item, IResource.MatchSettings.NORMAL)) {
+                extras.computeIfAbsent(item, ignored -> new LinkedHashMap<>())
+                    .merge(order.getByproductTarget(), order.getAmount(), Integer::sum);
+            }
+        }
+        for (Map.Entry<ItemIdentifier, Map<PatternByproductTarget, Integer>> item : extras.entrySet()) {
+            for (Map.Entry<PatternByproductTarget, Integer> extra : item.getValue().entrySet()) {
+                int amount = Math.min(extra.getValue()
+                    - root.getPromisedByproductAmount(this, item.getKey(), extra.getKey()), tree.getMissingAmount());
                 if (amount > 0) {
-                    debug(
-                        "providing extra %s amount=%d for request %s",
-                        order.getResource().getItem(),
-                        amount,
-                        requested);
-                    tree.addPromise(new PatternItemByproductPromise(
-                        order.getResource().getItem(), amount, this, true, order.getByproductTarget()));
-                    tree.setQueried(pipe.getItemOrderManager());
-                    return;
+                    tree.addPromise(new PatternItemByproductPromise(item.getKey(), amount, this, true, extra.getKey()));
                 }
             }
         }
+        tree.setQueried(manager);
     }
 
     /**
@@ -879,7 +891,11 @@ public class ModulePatternCrafting extends LogisticsGuiModule
                 extraResource = new DictResource(
                     new ItemIdentifierStack(promise.item, promise.numberOfItems), null);
             }
-            pipe.getItemOrderManager().removeExtras(extraResource);
+            if (promise instanceof PatternByproductPromise) {
+                pipe.getItemOrderManager().removeExtras(extraResource, byproductTarget(promise));
+            } else {
+                pipe.getItemOrderManager().removeExtras(extraResource);
+            }
             markHudStateDirty();
         }
         pipe.spawnParticle(Particles.WhiteParticle, 2);
@@ -924,7 +940,12 @@ public class ModulePatternCrafting extends LogisticsGuiModule
         ResourceType orderType = type;
         boolean byproduct = promise instanceof IExtraPromise;
         if (byproduct) {
-            pipe.getPatternFluidOrderManager().removeExtras(promise.getLiquid(), promise.getAmount());
+            if (promise instanceof PatternByproductPromise) {
+                pipe.getPatternFluidOrderManager().removeExtras(
+                    promise.getLiquid(), promise.getAmount(), byproductTarget(promise));
+            } else {
+                pipe.getPatternFluidOrderManager().removeExtras(promise.getLiquid(), promise.getAmount());
+            }
             orderType = ResourceType.CRAFTING;
             markHudStateDirty();
         }
@@ -1002,7 +1023,8 @@ public class ModulePatternCrafting extends LogisticsGuiModule
                     new ItemIdentifierStack(promise.getItemType(), promise.getAmount()), null));
         }
         order.setByproduct(true);
-        order.setByproductTarget(byproductTarget(promise));
+        PatternByproductTarget target = byproductTarget(promise);
+        order.setByproductTarget(target == null ? null : target.withSourceReference(owner));
         if (owner != null) {
             order.setCraftingReference(owner.createChild());
         }
@@ -1018,7 +1040,7 @@ public class ModulePatternCrafting extends LogisticsGuiModule
     /**
      * Builds a crafting template for the requested item or fluid output.
      * <p>
-     * The template records all local ingredients and all non-requested outputs as byproducts. Fluid outputs are matched
+     * The template records all local ingredients and all outputs other than the main output as byproducts. Fluid outputs are matched
      * through their fluid display item identity so the normal request tree can discover them.
      */
     @Override

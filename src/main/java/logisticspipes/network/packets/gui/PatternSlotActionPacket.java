@@ -43,6 +43,9 @@ public class PatternSlotActionPacket extends ModernPacket {
         } else if (action == Action.TOGGLE_IGNORE_NBT.ordinal()) {
             configuredPattern.toggleIgnoreNbt();
         }
+        if (action == PatternSlotActionPacket.Action.SELECT_MAIN_OUTPUT.ordinal()) {
+            configuredPattern.setMainOutputSlot(outputSlot);
+        }
         player.inventory.markDirty();
         if (player.openContainer != null) {
             player.openContainer.detectAndSendChanges();
@@ -52,6 +55,7 @@ public class PatternSlotActionPacket extends ModernPacket {
     private int inventorySlot;
 
     private int action;
+    private int outputSlot;
 
     public PatternSlotActionPacket(int id) {
         super(id);
@@ -61,6 +65,7 @@ public class PatternSlotActionPacket extends ModernPacket {
     public void readData(LPDataInputStream data) throws IOException {
         inventorySlot = data.readInt();
         action = data.readInt();
+        outputSlot = data.readInt();
     }
 
     public enum Action {
@@ -68,13 +73,15 @@ public class PatternSlotActionPacket extends ModernPacket {
         MULTIPLY_TWO,
         TOGGLE_PROCESSING,
         TOGGLE_ORE_DICT,
-        TOGGLE_IGNORE_NBT
+        TOGGLE_IGNORE_NBT,
+        SELECT_MAIN_OUTPUT
     }
 
     @Override
     public void writeData(LPDataOutputStream data) throws IOException {
         data.writeInt(inventorySlot);
         data.writeInt(action);
+        data.writeInt(outputSlot);
     }
 
     @Override

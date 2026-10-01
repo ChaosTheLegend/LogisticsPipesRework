@@ -69,6 +69,9 @@ class PatternCraftingTemplateBuilder {
      */
     private ICraftingTemplate buildItemTemplate(IResource toCraft, int slot, PatternRecipeSnapshot recipe) {
         for (int outputSlot = 0; outputSlot < recipe.getResultSlotCount(); outputSlot++) {
+            if (outputSlot != recipe.getMainOutputSlot()) {
+                continue;
+            }
             IPatternStack output = recipe.getOutput(outputSlot);
             ItemIdentifierStack result = PatternStackHelper.asSolidStack(output);
             if (result == null || !toCraft.matches(result.getItem(), IResource.MatchSettings.NORMAL)) {
@@ -93,6 +96,9 @@ class PatternCraftingTemplateBuilder {
      */
     private ICraftingTemplate buildFluidTemplate(IResource toCraft, int slot, PatternRecipeSnapshot recipe) {
         for (int outputSlot = 0; outputSlot < recipe.getResultSlotCount(); outputSlot++) {
+            if (outputSlot != recipe.getMainOutputSlot()) {
+                continue;
+            }
             IPatternStack output = recipe.getOutput(outputSlot);
             if (!(output instanceof PatternFluidStack result)) {
                 continue;
@@ -125,13 +131,13 @@ class PatternCraftingTemplateBuilder {
             IPatternStack byproductStack = recipe.getOutput(outputSlot);
             ItemIdentifierStack byproduct = PatternStackHelper.asSolidStack(byproductStack);
             if (byproduct != null) {
-                template.addByproduct(byproduct.clone(), itemByproductTarget(recipe, outputSlot));
+                template.addByproduct(byproduct.clone(), itemByproductTarget(recipe, template.getPatternSlot(), outputSlot));
                 continue;
             }
             if (byproductStack instanceof PatternFluidStack fluidByproduct) {
                 template.addFluidByproduct(
                     new FluidIdentifierStack(fluidByproduct.getFluid(), fluidByproduct.getAmount()),
-                    fluidByproductTarget(recipe, outputSlot));
+                    fluidByproductTarget(recipe, template.getPatternSlot(), outputSlot));
             }
         }
     }
@@ -148,40 +154,42 @@ class PatternCraftingTemplateBuilder {
             IPatternStack byproductStack = recipe.getOutput(outputSlot);
             ItemIdentifierStack byproduct = PatternStackHelper.asSolidStack(byproductStack);
             if (byproduct != null) {
-                template.addByproduct(byproduct.clone(), itemByproductTarget(recipe, outputSlot));
+                template.addByproduct(byproduct.clone(), itemByproductTarget(recipe, template.getPatternSlot(), outputSlot));
                 continue;
             }
             if (byproductStack instanceof PatternFluidStack fluidByproduct) {
                 template.addFluidByproduct(
                     new FluidIdentifierStack(fluidByproduct.getFluid(), fluidByproduct.getAmount()),
-                    fluidByproductTarget(recipe, outputSlot));
+                    fluidByproductTarget(recipe, template.getPatternSlot(), outputSlot));
             }
         }
     }
 
-    private PatternByproductTarget itemByproductTarget(PatternRecipeSnapshot recipe, int outputSlot) {
+    private PatternByproductTarget itemByproductTarget(PatternRecipeSnapshot recipe, int patternSlot, int outputSlot) {
         return byproductTarget(
+            patternSlot,
             outputSlot,
             recipe.getByproductSatelliteId(outputSlot),
             recipe.getByproductSatelliteUuid(outputSlot),
             false);
     }
 
-    private PatternByproductTarget fluidByproductTarget(PatternRecipeSnapshot recipe, int outputSlot) {
+    private PatternByproductTarget fluidByproductTarget(PatternRecipeSnapshot recipe, int patternSlot, int outputSlot) {
         return byproductTarget(
+            patternSlot,
             outputSlot,
             recipe.getFluidByproductSatelliteId(outputSlot),
             recipe.getFluidByproductSatelliteUuid(outputSlot),
             true);
     }
 
-    private PatternByproductTarget byproductTarget(int outputSlot, int satelliteId, String satelliteUuid,
+    private PatternByproductTarget byproductTarget(int patternSlot, int outputSlot, int satelliteId, String satelliteUuid,
                                                    boolean fluid) {
         if (!module.hasAdvancedSatelliteUpgrade()) {
-            return null;
+            satelliteId = 0;
+            satelliteUuid = "";
         }
-        PatternByproductTarget target = new PatternByproductTarget(outputSlot, satelliteId, satelliteUuid, fluid);
-        return target.isConfigured() ? target : null;
+        return new PatternByproductTarget(patternSlot, outputSlot, satelliteId, satelliteUuid, fluid, null);
     }
 
     /**

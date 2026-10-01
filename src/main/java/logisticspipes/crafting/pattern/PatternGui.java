@@ -96,6 +96,7 @@ public class PatternGui extends LogisticsBaseGuiScreen {
         for (int slot = 0; slot < pattern.getResultSlotCount(); slot++) {
             GuiGraphics.drawSlotBackground(mc, guiLeft + layout.outputX(slot), guiTop + layout.outputY(slot));
         }
+        PatternOutputSelection.drawMainOutput(pattern, layout, guiLeft, guiTop);
         drawSatelliteIcons();
         mc.fontRenderer.drawString("Pattern", guiLeft + 8, guiTop + 6, 0x404040);
     }
@@ -106,11 +107,26 @@ public class PatternGui extends LogisticsBaseGuiScreen {
         if (!hasSubGui()) {
             drawSatelliteButtonTooltip(mouseX, mouseY);
             drawFlagButtonTooltip(mouseX, mouseY);
+            PatternOutputSelection.drawTooltip(currentPattern(), layout(currentPattern()),
+                guiLeft, guiTop, mouseX, mouseY);
         }
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
+        if (!hasSubGui() && mouseButton == 0 && PatternOutputSelection.isAltDown()) {
+            AbstractPattern pattern = currentPattern();
+            int outputSlot = PatternOutputSelection.hoveredOutput(pattern, layout(pattern),
+                guiLeft, guiTop, mouseX, mouseY);
+            if (outputSlot >= 0) {
+                pattern.setMainOutputSlot(outputSlot);
+                MainProxy.sendPacketToServer(PacketHandler.getPacket(PatternSlotActionPacket.class)
+                    .setInventorySlot(patternInventory.getInventorySlot())
+                    .setAction(PatternSlotActionPacket.Action.SELECT_MAIN_OUTPUT.ordinal())
+                    .setOutputSlot(outputSlot));
+                return;
+            }
+        }
         if (mouseButton == 0 && !hasSubGui()) {
             SatelliteSlot satelliteSlot = getSatelliteHotspotSlot(mouseX, mouseY);
             if (satelliteSlot != null) {

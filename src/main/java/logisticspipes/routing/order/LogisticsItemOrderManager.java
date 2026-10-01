@@ -1,10 +1,12 @@
 package logisticspipes.routing.order;
 
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import logisticspipes.crafting.PatternByproductTarget;
 import logisticspipes.interfaces.IChangeListener;
 import logisticspipes.interfaces.ILPPositionProvider;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
@@ -89,6 +91,14 @@ public class LogisticsItemOrderManager extends LogisticsOrderManager<LogisticsIt
     }
 
     public void removeExtras(DictResource resource) {
+        removeExtras(resource, null, false);
+    }
+
+    public void removeExtras(DictResource resource, PatternByproductTarget target) {
+        removeExtras(resource, target, true);
+    }
+
+    private void removeExtras(DictResource resource, PatternByproductTarget target, boolean matchTarget) {
         int itemsToRemove = resource.getRequestedAmount();
         DictResource.Identifier ident = resource.getIdentifier();
         Iterator<LogisticsItemOrder> iter = _orders.iterator();
@@ -96,7 +106,8 @@ public class LogisticsItemOrderManager extends LogisticsOrderManager<LogisticsIt
         while (iter.hasNext()) {
             LogisticsItemOrder order = iter.next();
             if (order.getType() != ResourceType.EXTRA) continue;
-            if (order.getResource().getIdentifier().equals(ident)) {
+            if (order.getResource().getIdentifier().equals(ident)
+                && (!matchTarget || Objects.equals(target, order.getByproductTarget()))) {
                 if (itemsToRemove >= order.getAmount()) {
                     itemsToRemove -= order.getAmount();
                     toRemove.add(order);

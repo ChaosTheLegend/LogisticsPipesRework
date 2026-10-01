@@ -25,6 +25,7 @@ public class PatternPipeSlotActionPacket extends CoordinatesPacket {
 
     private int patternSlot;
     private int action;
+    private int outputSlot;
 
     public PatternPipeSlotActionPacket(int id) {
         super(id);
@@ -35,6 +36,7 @@ public class PatternPipeSlotActionPacket extends CoordinatesPacket {
         super.readData(data);
         patternSlot = data.readInt();
         action = data.readInt();
+        outputSlot = data.readInt();
     }
 
     @Override
@@ -61,6 +63,9 @@ public class PatternPipeSlotActionPacket extends CoordinatesPacket {
         } else if (action == PatternSlotActionPacket.Action.TOGGLE_IGNORE_NBT.ordinal()) {
             configuredPattern.toggleIgnoreNbt();
         }
+        if (action == PatternSlotActionPacket.Action.SELECT_MAIN_OUTPUT.ordinal()) {
+            configuredPattern.setMainOutputSlot(outputSlot);
+        }
         pipe.getPatternModule().markPatternInventoryDirty();
         if (player.openContainer != null) {
             player.openContainer.detectAndSendChanges();
@@ -72,6 +77,7 @@ public class PatternPipeSlotActionPacket extends CoordinatesPacket {
         super.writeData(data);
         data.writeInt(patternSlot);
         data.writeInt(action);
+        data.writeInt(outputSlot);
     }
 
     @Override

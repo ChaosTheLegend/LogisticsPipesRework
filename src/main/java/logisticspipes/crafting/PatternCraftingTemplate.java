@@ -23,6 +23,10 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
     private final ICraftItems crafter;
     private final int patternSlot;
 
+    public int getPatternSlot() {
+        return patternSlot;
+    }
+
     public PatternCraftingTemplate(ItemIdentifierStack result, ICraftItems crafter, int priority, int patternSlot) {
         this(result, crafter, priority, patternSlot, ItemPattern.INGREDIENT_SLOTS);
     }

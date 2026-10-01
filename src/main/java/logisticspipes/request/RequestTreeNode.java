@@ -2,6 +2,8 @@ package logisticspipes.request;
 
 import logisticspipes.crafting.IStagedCraftingProvider;
 import logisticspipes.crafting.PatternCraftingBranch;
+import logisticspipes.crafting.PatternByproductPromise;
+import logisticspipes.crafting.PatternByproductTarget;
 import logisticspipes.interfaces.IStack;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
 import logisticspipes.interfaces.routing.ICraft;
@@ -35,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.Set;
@@ -180,6 +183,23 @@ public class RequestTreeNode {
         }
     }
 
+    /** Counts claims on one exact registered pattern byproduct without including new crafts of the same resource. */
+    public int getPromisedByproductAmount(IProvide provider, ItemIdentifier item, PatternByproductTarget target) {
+        int amount = 0;
+        for (IPromise promise : promises) {
+            if (promise instanceof PatternByproductPromise byproduct
+                && promise.getProvider() == provider
+                && item.equals(promise.getItemType())
+                && Objects.equals(target, byproduct.getByproductTarget())) {
+                amount += promise.getAmount();
+            }
+        }
+        for (RequestTreeNode child : subRequests) {
+            amount += child.getPromisedByproductAmount(provider, item, target);
+        }
+        return amount;
+    }
+
     protected void checkForExtras(IResource item, HashMap<IProvide, List<IExtraPromise>> extraMap) {
         for (IExtraPromise extra : extrapromises) {
             if (item.matches(extra.getItemType(), IResource.MatchSettings.NORMAL)) {
@@ -305,7 +325,10 @@ public class RequestTreeNode {
             promise.registerExtras(requestType);
         }
         for (IExtraPromise promise : byproducts) {
-            promise.registerExtras(requestType);
+            // Staged providers register these byproducts only when their ingredient sets are dispatched.
+            if (!(promise.getProvider() instanceof IStagedCraftingProvider)) {
+                promise.registerExtras(requestType);
+            }
         }
         return list;
     }

@@ -1,9 +1,11 @@
 package logisticspipes.routing.order;
 
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.LinkedList;
 import java.util.List;
 
+import logisticspipes.crafting.PatternByproductTarget;
 import logisticspipes.interfaces.IChangeListener;
 import logisticspipes.interfaces.ILPPositionProvider;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
@@ -92,6 +94,14 @@ public class LogisticsFluidOrderManager extends LogisticsOrderManager<LogisticsF
      * destinationless extra order is reduced or removed so the same produced fluid is not extracted twice.
      */
     public void removeExtras(FluidIdentifier fluid, int amount) {
+        removeExtras(fluid, amount, null, false);
+    }
+
+    public void removeExtras(FluidIdentifier fluid, int amount, PatternByproductTarget target) {
+        removeExtras(fluid, amount, target, true);
+    }
+
+    private void removeExtras(FluidIdentifier fluid, int amount, PatternByproductTarget target, boolean matchTarget) {
         int fluidsToRemove = amount;
         Iterator<LogisticsFluidOrder> iter = _orders.iterator();
         List<LogisticsFluidOrder> toRemove = new LinkedList<>();
@@ -100,7 +110,8 @@ public class LogisticsFluidOrderManager extends LogisticsOrderManager<LogisticsF
             if (order.getType() != ResourceType.EXTRA) {
                 continue;
             }
-            if (order.getFluid().equals(fluid)) {
+            if (order.getFluid().equals(fluid)
+                && (!matchTarget || Objects.equals(target, order.getByproductTarget()))) {
                 if (fluidsToRemove >= order.getAmount()) {
                     fluidsToRemove -= order.getAmount();
                     toRemove.add(order);
