@@ -4,7 +4,9 @@ import logisticspipes.interfaces.routing.IProvideItems;
 import logisticspipes.routing.LogisticsPromise;
 import logisticspipes.routing.order.IOrderInfoProvider.ResourceType;
 import logisticspipes.utils.item.ItemIdentifier;
+import lombok.Getter;
 
+@Getter
 public class PatternCraftingPromise extends LogisticsPromise {
 
     private final int patternSlot;
@@ -15,14 +17,6 @@ public class PatternCraftingPromise extends LogisticsPromise {
         super(item, numberOfItems, sender, ResourceType.CRAFTING);
         this.patternSlot = patternSlot;
         this.resultAmountPerSet = resultAmountPerSet;
-    }
-
-    public int getPatternSlot() {
-        return patternSlot;
-    }
-
-    public int getResultAmountPerSet() {
-        return resultAmountPerSet;
     }
 
     @Override

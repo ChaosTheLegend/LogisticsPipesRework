@@ -7,6 +7,7 @@ import java.util.List;
 import net.minecraft.entity.player.EntityPlayer;
 
 import cpw.mods.fml.client.FMLClientHandler;
+import logisticspipes.crafting.requesttable.RequestTableDisplaySettings;
 import logisticspipes.crafting.requesttable.RequestTableGui;
 import logisticspipes.crafting.requesttable.RequestTableNetworkEntry;
 import logisticspipes.network.LPDataInputStream;
@@ -20,6 +21,7 @@ import logisticspipes.network.abstractpackets.ModernPacket;
 public class RequestTableContentPacket extends CoordinatesPacket {
 
     private List<RequestTableNetworkEntry> entries = new ArrayList<>();
+    private RequestTableDisplaySettings displaySettings = RequestTableDisplaySettings.DEFAULT;
 
     public RequestTableContentPacket(int id) {
         super(id);
@@ -33,6 +35,14 @@ public class RequestTableContentPacket extends CoordinatesPacket {
         return this;
     }
 
+    /**
+     * Sets the receiving player's state for this particular request table.
+     */
+    public RequestTableContentPacket setDisplaySettings(RequestTableDisplaySettings displaySettings) {
+        this.displaySettings = displaySettings;
+        return this;
+    }
+
     @Override
     public ModernPacket template() {
         return new RequestTableContentPacket(getId());
@@ -40,8 +50,10 @@ public class RequestTableContentPacket extends CoordinatesPacket {
 
     @Override
     public void processPacket(EntityPlayer player) {
-        if (FMLClientHandler.instance().getClient().currentScreen instanceof RequestTableGui) {
-            ((RequestTableGui) FMLClientHandler.instance().getClient().currentScreen).handleNetworkContent(entries);
+        if (FMLClientHandler.instance().getClient().currentScreen instanceof RequestTableGui gui) {
+            if (gui.isForTable(getPosX(), getPosY(), getPosZ())) {
+                gui.handleNetworkContent(entries, displaySettings);
+            }
         }
     }
 
@@ -54,7 +66,11 @@ public class RequestTableContentPacket extends CoordinatesPacket {
             data.writeItemIdentifierStack(entry.getStack());
             data.writeInt(entry.getNetworkAmount());
             data.writeInt(entry.getInternalAmount());
+            data.writeBoolean(entry.isCraftable());
         }
+        data.writeEnum(displaySettings.getSortMode());
+        data.writeEnum(displaySettings.getSortDirection());
+        data.writeEnum(displaySettings.getFilterMode());
     }
 
     @Override
@@ -69,7 +85,9 @@ public class RequestTableContentPacket extends CoordinatesPacket {
                             data.readItemIdentifierStack(),
                             fluid,
                             data.readInt(),
-                            data.readInt()));
+                            data.readInt(),
+                            data.readBoolean()));
         }
+        displaySettings = RequestTableDisplaySettings.fromOrdinals(data.readInt(), data.readInt(), data.readInt());
     }
 }

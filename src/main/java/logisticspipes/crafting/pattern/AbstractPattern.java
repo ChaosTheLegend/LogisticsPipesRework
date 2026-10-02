@@ -20,11 +20,16 @@ import lombok.NonNull;
 @Getter
 public abstract class AbstractPattern {
 
+    private static final String MAIN_OUTPUT_TAG = "patternMainOutputSlot";
     private static final String ITEMS_TAG = "patternItems";
     private static final String SATELLITE_TARGETS_TAG = "patternSatelliteTargets";
     private static final String SATELLITE_TARGET_UUIDS_TAG = "patternSatelliteTargetUuids";
     private static final String FLUID_SATELLITE_TARGETS_TAG = "patternFluidSatelliteTargets";
     private static final String FLUID_SATELLITE_TARGET_UUIDS_TAG = "patternFluidSatelliteTargetUuids";
+    private static final String BYPRODUCT_SATELLITE_TARGETS_TAG = "patternByproductSatelliteTargets";
+    private static final String BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG = "patternByproductSatelliteTargetUuids";
+    private static final String FLUID_BYPRODUCT_SATELLITE_TARGETS_TAG = "patternFluidByproductSatelliteTargets";
+    private static final String FLUID_BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG = "patternFluidByproductSatelliteTargetUuids";
     private static final String ORE_DICT_SUBSTITUTION_TAG = "patternOreDictSubstitution";
     private static final String IGNORE_NBT_TAG = "patternIgnoreNbt";
 
@@ -54,6 +59,41 @@ public abstract class AbstractPattern {
         return PatternStackHelper.aggregate(getOutputs());
     }
 
+    /** Uses the first populated output for patterns that have no explicit selection. */
+    public int getMainOutputSlot() {
+        if (patternStack != null && patternStack.hasTagCompound()
+                && patternStack.getTagCompound().hasKey(MAIN_OUTPUT_TAG)) {
+            int slot = patternStack.getTagCompound().getInteger(MAIN_OUTPUT_TAG);
+            if (slot >= 0 && slot < getResultSlotCount()
+                    && getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+                return slot;
+            }
+        }
+        for (int slot = 0; slot < getResultSlotCount(); slot++) {
+            if (getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    public void setMainOutputSlot(int slot) {
+        if (patternStack != null && slot >= 0
+                && slot < getResultSlotCount()
+                && getPatternStackInSlot(getResultSlotStart() + slot) != null) {
+            getOrCreateTag(patternStack).setInteger(MAIN_OUTPUT_TAG, slot);
+        }
+    }
+
+    public List<IPatternStack> getCraftableOutputs() {
+        IPatternStack main = getPatternStackInSlot(getResultSlotStart() + getMainOutputSlot());
+        List<IPatternStack> outputs = new ArrayList<>();
+        if (getMainOutputSlot() >= 0 && main != null) {
+            outputs.add(main);
+        }
+        return outputs;
+    }
+
     public List<ItemIdentifierStack> getAggregatedIngredients() {
         return toItemIdentifierStacks(getSolidPatternStacks(getAggregatedInputs()));
     }
@@ -66,12 +106,19 @@ public abstract class AbstractPattern {
      * Clears all item and fluid representations stored by this pattern.
      */
     public void clear() {
+        if (patternStack != null && patternStack.hasTagCompound()) {
+            patternStack.getTagCompound().removeTag(MAIN_OUTPUT_TAG);
+        }
         for (int i = 0; i < getItemSlotCount(); i++) {
             setStackInSlot(i, null);
         }
         for (int i = 0; i < getIngredientSlotCount(); i++) {
             setSatelliteIdForInputSlot(i, 0);
             setFluidSatelliteIdForInputSlot(i, 0);
+        }
+        for (int i = 0; i < getResultSlotCount(); i++) {
+            setByproductSatelliteIdForOutputSlot(i, 0);
+            setFluidByproductSatelliteIdForOutputSlot(i, 0);
         }
     }
 
@@ -132,6 +179,10 @@ public abstract class AbstractPattern {
             newList.appendTag(tag);
         }
         root.setTag(ITEMS_TAG, newList);
+        if ((stack == null || stack.getAmount() <= 0) && root.hasKey(MAIN_OUTPUT_TAG)
+                && root.getInteger(MAIN_OUTPUT_TAG) == slot - getResultSlotStart()) {
+            root.removeTag(MAIN_OUTPUT_TAG);
+        }
     }
 
     /**
@@ -177,19 +228,11 @@ public abstract class AbstractPattern {
     }
 
     public int getSatelliteIdForInputSlot(int slot) {
-        if (patternStack == null || slot < 0 || slot >= getIngredientSlotCount() || !patternStack.hasTagCompound()) {
-            return 0;
-        }
-        int[] targets = patternStack.getTagCompound().getIntArray(SATELLITE_TARGETS_TAG);
-        return slot < targets.length ? Math.max(0, targets[slot]) : 0;
+        return getSatelliteId(slot, SATELLITE_TARGETS_TAG, getIngredientSlotCount());
     }
 
     public String getSatelliteUuidForInputSlot(int slot) {
-        if (patternStack == null || slot < 0 || slot >= getIngredientSlotCount() || !patternStack.hasTagCompound()) {
-            return "";
-        }
-        NBTTagCompound targets = patternStack.getTagCompound().getCompoundTag(SATELLITE_TARGET_UUIDS_TAG);
-        return targets.getString(Integer.toString(slot));
+        return getSatelliteUuid(slot, SATELLITE_TARGET_UUIDS_TAG, getIngredientSlotCount());
     }
 
     public void setSatelliteIdForInputSlot(int slot, int satelliteId) {
@@ -197,20 +240,21 @@ public abstract class AbstractPattern {
     }
 
     public void setSatelliteTargetForInputSlot(int slot, int satelliteId, String satelliteUuid) {
-        setSatelliteTargetForInputSlot(
+        setSatelliteTarget(
                 slot,
                 satelliteId,
                 satelliteUuid,
                 SATELLITE_TARGETS_TAG,
-                SATELLITE_TARGET_UUIDS_TAG);
+                SATELLITE_TARGET_UUIDS_TAG,
+                getIngredientSlotCount());
     }
 
     public int getFluidSatelliteIdForInputSlot(int slot) {
-        return getSatelliteIdForInputSlot(slot, FLUID_SATELLITE_TARGETS_TAG);
+        return getSatelliteId(slot, FLUID_SATELLITE_TARGETS_TAG, getIngredientSlotCount());
     }
 
     public String getFluidSatelliteUuidForInputSlot(int slot) {
-        return getSatelliteUuidForInputSlot(slot, FLUID_SATELLITE_TARGET_UUIDS_TAG);
+        return getSatelliteUuid(slot, FLUID_SATELLITE_TARGET_UUIDS_TAG, getIngredientSlotCount());
     }
 
     public void setFluidSatelliteIdForInputSlot(int slot, int satelliteId) {
@@ -218,38 +262,83 @@ public abstract class AbstractPattern {
     }
 
     public void setFluidSatelliteTargetForInputSlot(int slot, int satelliteId, String satelliteUuid) {
-        setSatelliteTargetForInputSlot(
+        setSatelliteTarget(
                 slot,
                 satelliteId,
                 satelliteUuid,
                 FLUID_SATELLITE_TARGETS_TAG,
-                FLUID_SATELLITE_TARGET_UUIDS_TAG);
+                FLUID_SATELLITE_TARGET_UUIDS_TAG,
+                getIngredientSlotCount());
     }
 
-    private int getSatelliteIdForInputSlot(int slot, String targetTag) {
-        if (patternStack == null || slot < 0 || slot >= getIngredientSlotCount() || !patternStack.hasTagCompound()) {
+    public int getByproductSatelliteIdForOutputSlot(int slot) {
+        return getSatelliteId(slot, BYPRODUCT_SATELLITE_TARGETS_TAG, getResultSlotCount());
+    }
+
+    public String getByproductSatelliteUuidForOutputSlot(int slot) {
+        return getSatelliteUuid(slot, BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG, getResultSlotCount());
+    }
+
+    public void setByproductSatelliteIdForOutputSlot(int slot, int satelliteId) {
+        setByproductSatelliteTargetForOutputSlot(slot, satelliteId, "");
+    }
+
+    public void setByproductSatelliteTargetForOutputSlot(int slot, int satelliteId, String satelliteUuid) {
+        setSatelliteTarget(
+                slot,
+                satelliteId,
+                satelliteUuid,
+                BYPRODUCT_SATELLITE_TARGETS_TAG,
+                BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG,
+                getResultSlotCount());
+    }
+
+    public int getFluidByproductSatelliteIdForOutputSlot(int slot) {
+        return getSatelliteId(slot, FLUID_BYPRODUCT_SATELLITE_TARGETS_TAG, getResultSlotCount());
+    }
+
+    public String getFluidByproductSatelliteUuidForOutputSlot(int slot) {
+        return getSatelliteUuid(slot, FLUID_BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG, getResultSlotCount());
+    }
+
+    public void setFluidByproductSatelliteIdForOutputSlot(int slot, int satelliteId) {
+        setFluidByproductSatelliteTargetForOutputSlot(slot, satelliteId, "");
+    }
+
+    public void setFluidByproductSatelliteTargetForOutputSlot(int slot, int satelliteId, String satelliteUuid) {
+        setSatelliteTarget(
+                slot,
+                satelliteId,
+                satelliteUuid,
+                FLUID_BYPRODUCT_SATELLITE_TARGETS_TAG,
+                FLUID_BYPRODUCT_SATELLITE_TARGET_UUIDS_TAG,
+                getResultSlotCount());
+    }
+
+    private int getSatelliteId(int slot, String targetTag, int slotCount) {
+        if (patternStack == null || slot < 0 || slot >= slotCount || !patternStack.hasTagCompound()) {
             return 0;
         }
         int[] targets = patternStack.getTagCompound().getIntArray(targetTag);
         return slot < targets.length ? Math.max(0, targets[slot]) : 0;
     }
 
-    private String getSatelliteUuidForInputSlot(int slot, String uuidTag) {
-        if (patternStack == null || slot < 0 || slot >= getIngredientSlotCount() || !patternStack.hasTagCompound()) {
+    private String getSatelliteUuid(int slot, String uuidTag, int slotCount) {
+        if (patternStack == null || slot < 0 || slot >= slotCount || !patternStack.hasTagCompound()) {
             return "";
         }
         NBTTagCompound targets = patternStack.getTagCompound().getCompoundTag(uuidTag);
         return targets.getString(Integer.toString(slot));
     }
 
-    private void setSatelliteTargetForInputSlot(int slot, int satelliteId, String satelliteUuid, String targetTag,
-            String uuidTag) {
-        if (patternStack == null || slot < 0 || slot >= getIngredientSlotCount()) {
+    private void setSatelliteTarget(int slot, int satelliteId, String satelliteUuid, String targetTag, String uuidTag,
+            int slotCount) {
+        if (patternStack == null || slot < 0 || slot >= slotCount) {
             return;
         }
         NBTTagCompound root = getOrCreateTag(patternStack);
         int[] existing = root.getIntArray(targetTag);
-        int[] targets = new int[getIngredientSlotCount()];
+        int[] targets = new int[slotCount];
         System.arraycopy(existing, 0, targets, 0, Math.min(existing.length, targets.length));
         targets[slot] = Math.max(0, satelliteId);
         root.setIntArray(targetTag, targets);
@@ -295,7 +384,7 @@ public abstract class AbstractPattern {
     }
 
     public ItemStack getPrimaryResultStack() {
-        List<IPatternStack> outputs = getOutputs();
+        List<IPatternStack> outputs = getCraftableOutputs();
         if (!outputs.isEmpty()) {
             return outputs.get(0).makeDisplayItemStack();
         }
@@ -313,8 +402,19 @@ public abstract class AbstractPattern {
         if (outputs.isEmpty()) {
             return;
         }
-        tooltip.add(ChatColor.AQUA + "Results:");
-        addPatternStacksToTooltip(tooltip, outputs, ChatColor.DARK_BLUE);
+        tooltip.add(ChatColor.AQUA + "Main output:");
+        addPatternStacksToTooltip(tooltip, getCraftableOutputs(), ChatColor.DARK_BLUE);
+        List<IPatternStack> byproducts = new ArrayList<>();
+        for (int slot = 0; slot < getResultSlotCount(); slot++) {
+            IPatternStack output = getPatternStackInSlot(getResultSlotStart() + slot);
+            if (slot != getMainOutputSlot() && output != null) {
+                byproducts.add(output);
+            }
+        }
+        if (!byproducts.isEmpty()) {
+            tooltip.add(ChatColor.AQUA + "Byproducts:");
+            addPatternStacksToTooltip(tooltip, byproducts, ChatColor.DARK_BLUE);
+        }
         if (!getInputs().isEmpty()) {
             StringUtils.addShiftAction(tooltip, () -> {
                 tooltip.add(ChatColor.DARK_GREEN + "Ingredients:");
@@ -443,29 +543,39 @@ public abstract class AbstractPattern {
         return stack.getTagCompound();
     }
 
-    /**
-     * Clears the pattern, and sets the given in and outputs. If this is a processing pattern, null items in the inputs
-     * will be ignored. If this is a crafting pattern, null items in the inputs will be respected, and the slot will be
-     * kept empty.
-     *
-     * @param inputs  the new inputs
-     * @param outputs the new outputs
-     */
+    /** Checks the entire import before any existing contents are cleared. */
+    public boolean canSetInputsAndOutputs(List<IPatternStack> inputs, List<Integer> indices,
+            List<IPatternStack> outputs) {
+        if (inputs == null || indices == null
+                || outputs == null
+                || inputs.size() != indices.size()
+                || inputs.size() > getIngredientSlotCount()
+                || outputs.size() > getResultSlotCount())
+            return false;
+        boolean[] occupied = new boolean[getIngredientSlotCount()];
+        for (int i = 0; i < inputs.size(); i++) {
+            Integer slot = indices.get(i);
+            if (slot == null || slot < 0 || slot >= occupied.length || occupied[slot]) return false;
+            IPatternStack input = inputs.get(i);
+            if (input == null || input.getAmount() <= 0) return false;
+            occupied[slot] = true;
+        }
+        for (IPatternStack output : outputs) {
+            if (output == null || output.getAmount() <= 0) return false;
+        }
+        return true;
+    }
+
+    /** Replaces a complete recipe, preserving the supplied input slot positions. Invalid imports leave it unchanged. */
     public void setInputsAndOutputs(@NonNull List<IPatternStack> inputs, @NonNull List<Integer> indices,
             @NonNull List<IPatternStack> outputs) {
+        if (!canSetInputsAndOutputs(inputs, indices, outputs)) return;
         clear();
-
         for (int i = 0; i < inputs.size(); i++) {
-            IPatternStack input = inputs.get(i);
-
-            setPatternStackInSlot(indices.get(i), input);
+            setPatternStackInSlot(indices.get(i), inputs.get(i));
         }
-
-        var patternSlotId = getIngredientSlotCount();
-        for (int i = 0; i < outputs.size() && patternSlotId < getItemSlotCount(); i++) {
-            IPatternStack output = outputs.get(i);
-            setPatternStackInSlot(patternSlotId, output);
-            patternSlotId++;
+        for (int i = 0; i < outputs.size(); i++) {
+            setPatternStackInSlot(getResultSlotStart() + i, outputs.get(i));
         }
     }
 }

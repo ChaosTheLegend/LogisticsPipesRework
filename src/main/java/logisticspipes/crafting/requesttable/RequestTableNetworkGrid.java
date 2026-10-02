@@ -1,17 +1,13 @@
 package logisticspipes.crafting.requesttable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 import net.minecraft.item.ItemStack;
-import net.minecraftforge.fluids.FluidStack;
 
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
-import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.Color;
 import logisticspipes.utils.gui.LogisticsBaseGuiScreen;
 import logisticspipes.utils.item.ItemStackRenderer;
@@ -23,7 +19,7 @@ import logisticspipes.utils.string.StringUtils;
  */
 public class RequestTableNetworkGrid {
 
-    private final List<RequestTableNetworkEntry> entries = new ArrayList<>();
+    private final RequestTableNetworkList entries = new RequestTableNetworkList();
     private int scrollRow;
     private Object[] tooltip;
 
@@ -31,10 +27,25 @@ public class RequestTableNetworkGrid {
      * Replaces the complete network list.
      */
     public void setEntries(List<RequestTableNetworkEntry> newEntries) {
-        entries.clear();
-        entries.addAll(newEntries);
-        Collections.sort(entries);
-        scrollRow = Math.min(scrollRow, getMaxScrollRow(null));
+        entries.setEntries(newEntries);
+    }
+
+    /**
+     * Applies a new sort/filter state and invalidates the cached visible list once.
+     */
+    public void setDisplaySettings(RequestTableDisplaySettings settings) {
+        if (entries.setDisplaySettings(settings)) {
+            scrollRow = 0;
+        }
+    }
+
+    /**
+     * Updates the cached search result if the text actually changed.
+     */
+    public void setSearch(String search) {
+        if (entries.setSearch(search)) {
+            scrollRow = 0;
+        }
     }
 
     /**
@@ -47,16 +58,15 @@ public class RequestTableNetworkGrid {
     /**
      * Scrolls the grid by whole rows.
      */
-    public void scroll(int rows, String search) {
-        scrollRow = Math.max(0, Math.min(getMaxScrollRow(search), scrollRow + rows));
+    public void scroll(int rows, RequestTableLayout layout) {
+        scrollRow = Math.max(0, Math.min(getMaxScrollRow(layout), scrollRow + rows));
     }
 
     /**
      * Renders the grid and updates the hover tooltip.
      */
-    public void render(LogisticsBaseGuiScreen screen, RequestTableLayout layout, String search, int mouseX,
-            int mouseY) {
-        List<RequestTableNetworkEntry> filtered = filter(search);
+    public void render(LogisticsBaseGuiScreen screen, RequestTableLayout layout, int mouseX, int mouseY) {
+        List<RequestTableNetworkEntry> filtered = entries.getVisibleEntries();
         int columns = layout.getNetworkColumns();
         int visibleRows = layout.getVisiblePanelRows();
         int maxScroll = Math.max(0, (filtered.size() + columns - 1) / columns - visibleRows);
@@ -122,13 +132,13 @@ public class RequestTableNetworkGrid {
     /**
      * Finds an entry at the given mouse position.
      */
-    public RequestTableNetworkEntry getEntryAt(RequestTableLayout layout, String search, int mouseX, int mouseY) {
+    public RequestTableNetworkEntry getEntryAt(RequestTableLayout layout, int mouseX, int mouseY) {
         if (mouseX < layout.panelLeft || mouseX >= layout.panelLeft + layout.panelWidth
                 || mouseY < layout.panelTop
                 || mouseY >= layout.panelTop + layout.panelHeight) {
             return null;
         }
-        List<RequestTableNetworkEntry> filtered = filter(search);
+        List<RequestTableNetworkEntry> filtered = entries.getVisibleEntries();
         int columns = layout.getNetworkColumns();
         int column = (mouseX - layout.panelLeft - 2) / RequestTableLayout.PANEL_CELL;
         int row = (mouseY - layout.panelTop - 2) / RequestTableLayout.PANEL_CELL;
@@ -155,43 +165,9 @@ public class RequestTableNetworkGrid {
         screen.drawRect(layout.scrollbarX + 1, barTop, layout.scrollbarX + 4, barTop + barHeight, Color.LIGHTER_GREY);
     }
 
-    private int getMaxScrollRow(String search) {
-        List<RequestTableNetworkEntry> filtered = filter(search);
-        return Math.max(0, (filtered.size() + 8) / 9 - 1);
-    }
-
-    private List<RequestTableNetworkEntry> filter(String search) {
-        if (search == null || search.trim().isEmpty()) {
-            return new ArrayList<>(entries);
-        }
-        String lowerSearch = search.toLowerCase(Locale.US);
-        List<RequestTableNetworkEntry> filtered = new ArrayList<>();
-        for (RequestTableNetworkEntry entry : entries) {
-            if (matches(entry, lowerSearch)) {
-                filtered.add(entry);
-            }
-        }
-        return filtered;
-    }
-
-    private boolean matches(RequestTableNetworkEntry entry, String search) {
-        if (entry.isFluid()) {
-            FluidStack fluid = SimpleServiceLocator.logisticsFluidManager.getFluidFromContainer(entry.getStack());
-            if (fluid != null && containsAll(fluid.getLocalizedName().toLowerCase(Locale.US), search)) {
-                return true;
-            }
-        }
-        ItemStack stack = entry.getStack().unsafeMakeNormalStack();
-        return containsAll(stack.getDisplayName().toLowerCase(Locale.US), search)
-                || containsAll(entry.getStack().getItem().getFriendlyName().toLowerCase(Locale.US), search);
-    }
-
-    private boolean containsAll(String value, String search) {
-        for (String token : search.split(" ")) {
-            if (!value.contains(token)) {
-                return false;
-            }
-        }
-        return true;
+    private int getMaxScrollRow(RequestTableLayout layout) {
+        int columns = layout.getNetworkColumns();
+        int rows = (entries.getVisibleEntries().size() + columns - 1) / columns;
+        return Math.max(0, rows - layout.getVisiblePanelRows());
     }
 }

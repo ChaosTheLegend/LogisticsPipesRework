@@ -1,5 +1,7 @@
 package logisticspipes.pipes.upgrades;
 
+import logisticspipes.crafting.PipeFluidPatternSatelliteLogistics;
+import logisticspipes.crafting.PipeItemsPatternSatelliteLogistics;
 import logisticspipes.modules.ModuleCrafter;
 import logisticspipes.modules.abstractmodules.LogisticsModule;
 import logisticspipes.pipes.PipeItemsCraftingLogistics;
@@ -14,7 +16,8 @@ public class CraftingByproductUpgrade implements IPipeUpgrade {
 
     @Override
     public boolean isAllowedForPipe(CoreRoutedPipe pipe) {
-        return pipe instanceof PipeItemsCraftingLogistics;
+        return pipe instanceof PipeItemsCraftingLogistics || pipe instanceof PipeItemsPatternSatelliteLogistics
+                || pipe instanceof PipeFluidPatternSatelliteLogistics;
     }
 
     @Override
@@ -24,7 +27,7 @@ public class CraftingByproductUpgrade implements IPipeUpgrade {
 
     @Override
     public String[] getAllowedPipes() {
-        return new String[] { "crafting" };
+        return new String[] { "crafting", "pattern satellite", "pattern fluid satellite" };
     }
 
     @Override

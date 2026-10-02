@@ -147,6 +147,7 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
     @Override
     public void onNeighborBlockChange(int blockId) {
         targetSelector.clearCache();
+        module.onCraftingTargetChanged();
         super.onNeighborBlockChange(blockId);
     }
 
@@ -167,6 +168,11 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
                 && entityplayer.getCurrentEquippedItem().getItem() == LogisticsPipes.LogisticsMemoryChip) {
             if (MainProxy.isServer(entityplayer.worldObj)) {
                 if (settings == null || settings.openGui) {
+                    if (!hasAdvancedSatelliteUpgrade()) {
+                        entityplayer
+                                .addChatComponentMessage(new ChatComponentText("Advanced Satellite Upgrade required"));
+                        return true;
+                    }
                     ItemMemoryChip.PatternSatelliteMode mode = ItemMemoryChip
                             .getPatternSatelliteMode(entityplayer.getCurrentEquippedItem());
                     if (mode == ItemMemoryChip.PatternSatelliteMode.APPLY_LAST_TO_RECIPE) {
@@ -239,6 +245,10 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
         return PipeItemsPatternSatelliteLogistics.findById(satelliteId);
     }
 
+    public boolean hasAdvancedSatelliteUpgrade() {
+        return getOriginalUpgradeManager().isAdvancedSatelliteCrafter();
+    }
+
     public PipeItemsPatternSatelliteLogistics getLinkedPatternSatellite(String satelliteUuid, int satelliteId) {
         if (satelliteUuid != null && !satelliteUuid.isEmpty() && linkedPatternSatelliteUuids.contains(satelliteUuid)) {
             PipeItemsPatternSatelliteLogistics satellite = PipeItemsPatternSatelliteLogistics.findByUuid(satelliteUuid);
@@ -257,6 +267,9 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
      * Resolving through this method makes the saved pattern assignment enough to route ingredients.
      */
     public PipeItemsPatternSatelliteLogistics resolvePatternSatelliteTarget(String satelliteUuid, int satelliteId) {
+        if (!hasAdvancedSatelliteUpgrade()) {
+            return null;
+        }
         PipeItemsPatternSatelliteLogistics satellite = findPatternSatellite(satelliteUuid, satelliteId);
         if (satellite != null && getWorld() != null && MainProxy.isServer(getWorld())) {
             linkPatternSatellite(satellite.satelliteId, satellite.getSatelliteUuid());
@@ -269,6 +282,9 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
      */
     public PipeFluidPatternSatelliteLogistics resolvePatternFluidSatelliteTarget(String satelliteUuid,
             int satelliteId) {
+        if (!hasAdvancedSatelliteUpgrade()) {
+            return null;
+        }
         PipeFluidPatternSatelliteLogistics satellite = findPatternFluidSatellite(satelliteUuid, satelliteId);
         if (satellite != null && getWorld() != null && MainProxy.isServer(getWorld())) {
             linkPatternFluidSatellite(satellite.satelliteId, satellite.getSatelliteUuid());
@@ -373,6 +389,7 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
     }
 
     public void refreshSelectedInventoryConnection() {
+        module.onCraftingTargetChanged();
         clearCache();
         triggerConnectionCheck();
         connectionUpdate();
@@ -566,7 +583,7 @@ public class PipeItemsPatternCraftingLogistics extends FluidRoutedPipe
 
     @Override
     public Set<ItemIdentifier> getSpecificInterests() {
-        return module.getCraftedItems();
+        return module.getOutputItems();
     }
 
     @Override

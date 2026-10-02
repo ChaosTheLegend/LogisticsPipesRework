@@ -35,6 +35,7 @@ import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.blocks.powertile.LogisticsRFPowerProviderTileEntity;
 import logisticspipes.blocks.stats.LogisticsStatisticsTileEntity;
 import logisticspipes.config.Configs;
+import logisticspipes.crafting.CraftingMonitorTileEntity;
 import logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity;
 import logisticspipes.crafting.requesttable.RequestTableGui;
 import logisticspipes.gui.GuiCraftingPipe;
@@ -121,6 +122,9 @@ public class ClientProxy implements IProxy {
         GameRegistry.registerTileEntity(
                 PatternLogisticsCraftingTableTileEntity.class,
                 "logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity");
+        GameRegistry.registerTileEntity(
+                CraftingMonitorTileEntity.class,
+                "logisticspipes.crafting.CraftingMonitorTileEntity");
         GameRegistry.registerTileEntity(LogisticsTileGenericPipe.class, LogisticsPipes.logisticsTileGenericPipeMapping);
         GameRegistry.registerTileEntity(
                 LogisticsStatisticsTileEntity.class,
@@ -297,7 +301,7 @@ public class ClientProxy implements IProxy {
 
     @Override
     public void openFluidSelectGui(final int slotId) {
-        if (Minecraft.getMinecraft().currentScreen instanceof LogisticsBaseGuiScreen) {
+        if (Minecraft.getMinecraft().currentScreen instanceof LogisticsBaseGuiScreen gui) {
             final List<ItemIdentifierStack> list = new ArrayList<>();
             for (FluidIdentifier fluid : FluidIdentifier.all()) {
                 if (fluid == null) {
@@ -310,7 +314,6 @@ public class ClientProxy implements IProxy {
                     slot -> MainProxy.sendPacketToServer(
                             PacketHandler.getPacket(DummyContainerSlotClick.class).setSlotId(slotId)
                                     .setStack(list.get(slot).makeNormalStack()).setButton(0)));
-            LogisticsBaseGuiScreen gui = (LogisticsBaseGuiScreen) Minecraft.getMinecraft().currentScreen;
             if (!gui.hasSubGui()) {
                 gui.setSubGui(subGui);
             } else {

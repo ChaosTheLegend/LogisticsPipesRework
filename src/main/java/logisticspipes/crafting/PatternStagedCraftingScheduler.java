@@ -2,6 +2,7 @@ package logisticspipes.crafting;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -11,7 +12,6 @@ import logisticspipes.crafting.patternStack.IPatternStack;
 import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
 import logisticspipes.routing.order.LogisticsFluidOrder;
 import logisticspipes.routing.order.LogisticsItemOrder;
-import logisticspipes.utils.AdjacentTile;
 import logisticspipes.utils.CacheHolder.CacheTypes;
 
 /**
@@ -24,24 +24,32 @@ class PatternStagedCraftingScheduler {
 
     private final ModulePatternCrafting module;
     private final PipeItemsPatternCraftingLogistics pipe;
-    private final AdjacentInventoryHandler adjacentInventory;
     private final List<PatternCraftingOrder> stagedCrafts;
     private final Set<Integer> requestingPatterns = new HashSet<>();
+    private long lastPeriodicRequestTick = Long.MIN_VALUE;
 
     PatternStagedCraftingScheduler(ModulePatternCrafting module, PipeItemsPatternCraftingLogistics pipe,
-            AdjacentInventoryHandler adjacentInventory, List<PatternCraftingOrder> stagedCrafts) {
+            List<PatternCraftingOrder> stagedCrafts) {
         this.module = module;
         this.pipe = pipe;
-        this.adjacentInventory = adjacentInventory;
         this.stagedCrafts = stagedCrafts;
     }
 
     /**
      * Requests ingredients for every staged order that still has room in the module or adjacent inventory.
      */
-    void requestIngredients() {
+    void requestIngredients(boolean capacityChanged) {
+        long tick = module.currentWorldTick();
+        if (!capacityChanged && lastPeriodicRequestTick == tick) {
+            return;
+        }
+        lastPeriodicRequestTick = tick;
+        Set<Integer> patternSlots = new LinkedHashSet<>();
         for (PatternCraftingOrder order : new ArrayList<>(stagedCrafts)) {
-            requestIngredients(order.patternSlot);
+            patternSlots.add(order.patternSlot);
+        }
+        for (int patternSlot : patternSlots) {
+            requestIngredients(patternSlot);
         }
     }
 
@@ -168,8 +176,8 @@ class PatternStagedCraftingScheduler {
     }
 
     private void requestOrderIngredients(PatternCraftingOrder order, ItemStack pattern) {
-        int orderableSets = orderableSetsForPattern(order, pattern);
         int branchSets = order.availableSetsFromBranches(pattern);
+        int orderableSets = orderableSetsForPattern(order, pattern, branchSets);
         int sets = Math.min(order.remainingSets, orderableSets);
         sets = Math.min(sets, branchSets);
         if (sets <= 0) {
@@ -226,7 +234,7 @@ class PatternStagedCraftingScheduler {
      * inventory. Requested but not-yet-arrived ingredients are subtracted so repeated recalculation only orders newly
      * freed capacity.
      */
-    private int orderableSetsForPattern(PatternCraftingOrder order, ItemStack pattern) {
+    private int orderableSetsForPattern(PatternCraftingOrder order, ItemStack pattern, int branchSets) {
         if (!module.canReceiveForPattern(order.patternSlot)) {
             module.debugEventThrottled("SCHED", "orderable sets slot=%d result=0 cannot receive", order.patternSlot);
             return 0;
@@ -235,19 +243,21 @@ class PatternStagedCraftingScheduler {
         if (ingredients.isEmpty()) {
             return 0;
         }
-        AdjacentTile connected = module.getConnectedInventoryTile();
+        int maxWantedSets = Math.min(order.remainingSets, branchSets);
+        int targetSets = module.maxDispatchablePatternSets(order.reference(), pattern, maxWantedSets);
+        if (targetSets <= 0) {
+            module.debugEventThrottled(
+                    "SCHED",
+                    "orderable sets slot=%d result=0 no target capacity maxWantedSets=%d",
+                    order.patternSlot,
+                    maxWantedSets);
+            return 0;
+        }
         int sets = Integer.MAX_VALUE;
-        PipeItemsPatternCraftingLogistics.BlockingMode mode = module.getEffectiveBlockingMode();
         for (IPatternStack ingredient : ingredients) {
-            int room = module.spaceForPatternIngredient(order.patternSlot, pattern, ingredient);
-            if (mode == PipeItemsPatternCraftingLogistics.BlockingMode.BLOCKING && connected != null
-                    && adjacentInventory.isEmpty(connected)) {
-                room += ingredient.getAmount();
-            }
-            room -= module.requestedIngredientAmount(order.patternSlot, pattern, ingredient);
+            int room = module.remainingIngredientRoomForSets(order.patternSlot, pattern, ingredient, targetSets);
             sets = Math.min(sets, Math.max(0, room) / ingredient.getAmount());
         }
-        sets = sets == Integer.MAX_VALUE ? 0 : Math.max(0, sets);
-        return mode == PipeItemsPatternCraftingLogistics.BlockingMode.BLOCKING ? Math.min(sets, 1) : sets;
+        return sets == Integer.MAX_VALUE ? 0 : Math.max(0, sets);
     }
 }

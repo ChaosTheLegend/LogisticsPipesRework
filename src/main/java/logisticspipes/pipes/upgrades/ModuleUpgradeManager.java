@@ -51,6 +51,11 @@ public class ModuleUpgradeManager implements ISimpleInventoryEventHandler, ISlot
     }
 
     @Override
+    public boolean hasInstantSatelliteUpgrade() {
+        return parent.hasInstantSatelliteUpgrade();
+    }
+
+    @Override
     public boolean hasByproductExtractor() {
         return hasByproductExtractor || parent.hasByproductExtractor();
     }

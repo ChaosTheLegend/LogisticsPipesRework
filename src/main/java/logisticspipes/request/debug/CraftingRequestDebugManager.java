@@ -26,7 +26,7 @@ public final class CraftingRequestDebugManager {
     private static final int MAX_EVENTS = 60000;
     private static final Pattern PIPE_MESSAGE_PATTERN = Pattern.compile("^(pipe=\\([^)]*\\))\\s+(.*)$");
     private static final Pattern TARGET_SLOT_PATTERN = Pattern
-            .compile("PatternTargetInformation\\[patternSlot=(\\d+)(?:, inputSlot=-?\\d+)?]");
+            .compile("PatternTargetInformation\\[patternSlot=(-?\\d+)(?:, inputSlot=-?\\d+)?(?:,.*)?]");
     private static final Pattern STAGED_START_PATTERN = Pattern
             .compile("^staged craft start promise=(.*?) amount=(\\d+) request=.* info=(.*?) branch=.*$");
     private static final Pattern STAGED_REGISTERED_PATTERN = Pattern

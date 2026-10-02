@@ -1,6 +1,7 @@
 package logisticspipes.request.resources;
 
 import java.io.IOException;
+import java.util.StringJoiner;
 
 import logisticspipes.interfaces.routing.IRequestFluid;
 import logisticspipes.network.LPDataInputStream;
@@ -122,5 +123,11 @@ public class FluidResource implements IResource {
     @Override
     public ItemIdentifierStack getDisplayItem() {
         return liquid.getItemIdentifier().makeStack(amount);
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", FluidResource.class.getSimpleName() + "[", "]").add("liquid=" + liquid)
+                .add("amount=" + amount).add("target=" + target).toString();
     }
 }
