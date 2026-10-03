@@ -2,7 +2,9 @@ package logisticspipes.crafting;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.ISidedInventory;
@@ -12,11 +14,13 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidHandler;
 
 import logisticspipes.interfaces.IInventoryUtil;
+import logisticspipes.interfaces.ISpecialTankAccessHandler;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
+import logisticspipes.pipes.basic.fluid.FluidRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.routing.IRouter;
@@ -37,7 +41,7 @@ import logisticspipes.utils.item.ItemIdentifierStack;
  * adjacency scan.
  * </p>
  */
-final class PatternSatelliteByproductExtractor {
+public final class PatternSatelliteByproductExtractor {
 
     private static final int ADJACENT_HANDLER_CACHE_TICKS = 40;
 
@@ -51,12 +55,81 @@ final class PatternSatelliteByproductExtractor {
         this.satellite = satellite;
     }
 
+    /** Clears extractable contents to available storage sinks, leaving contents in place when storage is full. */
+    public static void clearInventory(CoreRoutedPipe pipe) {
+        if (pipe.getWorld() == null || MainProxy.isClient(pipe.getWorld())) return;
+        PatternSatelliteByproductExtractor extractor = new PatternSatelliteByproductExtractor(pipe);
+        Map<ItemIdentifier, Integer> items = new HashMap<>();
+        for (AdjacentTile target : extractor.getItemTargets()) {
+            IInventory inventory = extractor.extractionInventory(target);
+            if (inventory == null) continue;
+            SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inventory, target.orientation.getOpposite())
+                    .getItemsAndCount().forEach((item, count) -> items.merge(item, count, Integer::sum));
+        }
+        for (var entry : items.entrySet()) {
+            int remaining = entry.getValue();
+            while (remaining > 0) {
+                var sink = SimpleServiceLocator.logisticsManager.hasDestination(
+                        entry.getKey(),
+                        true,
+                        pipe.getRouter().getSimpleID(),
+                        Collections.singletonList(pipe.getRouter().getSimpleID()));
+                if (sink == null || sink.getValue1() == null || sink.getValue1() <= 0 || sink.getValue2() == null)
+                    break;
+                int amount = Math.min(remaining, entry.getKey().makeNormalStack(1).getMaxStackSize());
+                if (sink.getValue2().maxNumberOfItems > 0) amount = Math.min(amount, sink.getValue2().maxNumberOfItems);
+                var result = extractor.extractItem(entry.getKey(), amount, sink.getValue1(), sink.getValue2().addInfo);
+                if (result.amount() <= 0) break;
+                remaining -= result.amount();
+            }
+        }
+        Map<FluidIdentifier, Long> fluids = new HashMap<>();
+        for (AdjacentTile target : extractor.getFluidTargets()) {
+            if (SimpleServiceLocator.specialTankHandler.hasHandlerFor(target.tile)
+                    && SimpleServiceLocator.specialTankHandler
+                            .getTankHandlerFor(target.tile) instanceof ISpecialTankAccessHandler special) {
+                special.getAvailableLiquid(target.tile)
+                        .forEach((fluid, count) -> fluids.merge(fluid, count, Long::sum));
+            } else if (target.tile instanceof IFluidHandler handler) {
+                var tanks = handler.getTankInfo(target.orientation.getOpposite());
+                if (tanks == null) continue;
+                for (var tank : tanks) {
+                    if (tank != null && tank.fluid != null && tank.fluid.amount > 0)
+                        fluids.merge(FluidIdentifier.get(tank.fluid), (long) tank.fluid.amount, Long::sum);
+                }
+            }
+        }
+        for (var entry : fluids.entrySet()) {
+            long remaining = entry.getValue();
+            while (remaining > 0) {
+                int amount = (int) Math
+                        .min(remaining, logisticspipes.config.Configs.MAX_LOGISTICS_FLUID_TRANSPORT_INNER_CAPACITY / 2);
+                var sink = SimpleServiceLocator.logisticsFluidManager.getBestReply(
+                        entry.getKey().makeFluidStack(amount),
+                        pipe.getRouter(),
+                        Collections.singletonList(pipe.getRouter().getSimpleID()));
+                if (sink == null || sink.getValue1() == null
+                        || sink.getValue1() <= 0
+                        || sink.getValue2() == null
+                        || sink.getValue2() <= 0)
+                    break;
+                var result = extractor
+                        .extractFluid(entry.getKey(), Math.min(amount, sink.getValue2()), sink.getValue1(), null);
+                if (result.amount() <= 0) break;
+                remaining -= result.amount();
+            }
+        }
+    }
+
+    private static int fluidEnergy(int amount) {
+        return 1 + (amount - 1) / 1000;
+    }
+
     boolean canExtractFor(IRouter requester) {
         if (requester == null || satellite.getWorld() == null
                 || MainProxy.isClient(satellite.getWorld())
                 || satellite.getContainer() == null
-                || satellite.getContainer().isInvalid()
-                || !satellite.getOriginalUpgradeManager().hasByproductExtractor()) {
+                || satellite.getContainer().isInvalid()) {
             return false;
         }
         try {
@@ -101,6 +174,24 @@ final class PatternSatelliteByproductExtractor {
             return PatternByproductExtractionResult.empty();
         }
         for (AdjacentTile target : getFluidTargets()) {
+            if (SimpleServiceLocator.specialTankHandler.hasHandlerFor(target.tile)
+                    && SimpleServiceLocator.specialTankHandler
+                            .getTankHandlerFor(target.tile) instanceof ISpecialTankAccessHandler special) {
+                FluidStack simulated = special.drainFrom(target.tile, fluid, amount, false);
+                if (simulated == null || simulated.amount <= 0
+                        || !fluid.equals(FluidIdentifier.get(simulated))
+                        || !satellite.useEnergy(fluidEnergy(Math.min(amount, simulated.amount)))) {
+                    continue;
+                }
+                FluidStack drained = special.drainFrom(target.tile, fluid, Math.min(amount, simulated.amount), true);
+                if (drained != null && drained.amount > 0 && fluid.equals(FluidIdentifier.get(drained))) {
+                    IRoutedItem routedItem = queueFluid(drained, target.orientation, destination, info);
+                    extractionSucceeded();
+                    return new PatternByproductExtractionResult(drained.amount, routedItem);
+                }
+                continue;
+            }
+            if (!(target.tile instanceof IFluidHandler)) continue;
             IFluidHandler handler = (IFluidHandler) target.tile;
             ForgeDirection side = target.orientation.getOpposite();
             FluidStack requested = fluid.makeFluidStack(amount);
@@ -114,7 +205,7 @@ final class PatternSatelliteByproductExtractor {
             }
             if (simulated == null || simulated.amount <= 0
                     || !fluid.equals(FluidIdentifier.get(simulated))
-                    || !satellite.useEnergy(Math.min(amount, simulated.amount))) {
+                    || !satellite.useEnergy(fluidEnergy(Math.min(amount, simulated.amount)))) {
                 continue;
             }
             int toDrain = Math.min(amount, simulated.amount);
@@ -150,6 +241,12 @@ final class PatternSatelliteByproductExtractor {
 
     private List<AdjacentTile> findTargets(boolean items) {
         List<AdjacentTile> targets = new ArrayList<>();
+        if (!items && satellite instanceof FluidRoutedPipe fluidPipe) {
+            for (var tank : fluidPipe.getAdjacentTanks(false)) {
+                targets.add(new AdjacentTile(tank.getValue1(), tank.getValue2()));
+            }
+            return Collections.unmodifiableList(targets);
+        }
         ForgeDirection pointed = satellite.getPointedOrientation();
         WorldUtil worldUtil = new WorldUtil(satellite.getWorld(), satellite.getX(), satellite.getY(), satellite.getZ());
         for (AdjacentTile target : worldUtil.getAdjacentTileEntities(true)) {

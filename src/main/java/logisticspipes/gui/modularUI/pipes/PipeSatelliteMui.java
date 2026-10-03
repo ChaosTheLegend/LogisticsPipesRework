@@ -12,6 +12,7 @@ import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 
 import logisticspipes.crafting.IPatternSatellitePipe;
+import logisticspipes.crafting.PatternSatelliteByproductExtractor;
 import logisticspipes.gui.modularUI.LogisticsPipeMUI;
 import logisticspipes.pipes.ISatellitePipe;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
@@ -64,6 +65,12 @@ public class PipeSatelliteMui extends LogisticsPipeMUI {
                                     .allowC2S()));
         }
 
+        column.child(
+                new ButtonWidget<>().width(104).overlay(IKey.lang("gui.satellite.ClearInventory")).syncHandler(
+                        new InteractionSyncHandler().setOnMousePressed(
+                                i -> {
+                                    if (i.mouseButton == 0) PatternSatelliteByproductExtractor.clearInventory(pipe);
+                                })));
         widget.child(column);
         return widget;
     }
@@ -75,6 +82,6 @@ public class PipeSatelliteMui extends LogisticsPipeMUI {
 
     @Override
     public int getHeight() {
-        return pipe instanceof IPatternSatellitePipe ? 124 : 80;
+        return pipe instanceof IPatternSatellitePipe ? 148 : 104;
     }
 }

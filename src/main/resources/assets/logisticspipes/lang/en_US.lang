@@ -538,6 +538,7 @@ gui.routingstats.exit=Press <ESC> to exit
 gui.satellite.SatelliteID=Satellite ID
 gui.satellite.PatternSatellite=Pattern Satellite
 gui.satellite.Name=Name
+gui.satellite.ClearInventory=Clear inventory
 
 gui.securitystation.Open=Open
 gui.securitystation.EditTable=Edit Table
