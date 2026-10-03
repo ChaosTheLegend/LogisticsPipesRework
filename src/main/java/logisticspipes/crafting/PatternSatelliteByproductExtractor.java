@@ -46,19 +46,25 @@ public final class PatternSatelliteByproductExtractor {
     private static final int ADJACENT_HANDLER_CACHE_TICKS = 40;
 
     private final CoreRoutedPipe satellite;
+    private final boolean manualClear;
     private List<AdjacentTile> itemTargets = Collections.emptyList();
     private List<AdjacentTile> fluidTargets = Collections.emptyList();
     private long itemTargetsValidUntil = Long.MIN_VALUE;
     private long fluidTargetsValidUntil = Long.MIN_VALUE;
 
     PatternSatelliteByproductExtractor(CoreRoutedPipe satellite) {
+        this(satellite, false);
+    }
+
+    private PatternSatelliteByproductExtractor(CoreRoutedPipe satellite, boolean manualClear) {
         this.satellite = satellite;
+        this.manualClear = manualClear;
     }
 
     /** Clears extractable contents to available storage sinks, leaving contents in place when storage is full. */
     public static void clearInventory(CoreRoutedPipe pipe) {
         if (pipe.getWorld() == null || MainProxy.isClient(pipe.getWorld())) return;
-        PatternSatelliteByproductExtractor extractor = new PatternSatelliteByproductExtractor(pipe);
+        PatternSatelliteByproductExtractor extractor = new PatternSatelliteByproductExtractor(pipe, true);
         Map<ItemIdentifier, Integer> items = new HashMap<>();
         for (AdjacentTile target : extractor.getItemTargets()) {
             IInventory inventory = extractor.extractionInventory(target);
@@ -202,6 +208,15 @@ public final class PatternSatelliteByproductExtractor {
                 // Some hatch handlers implement only the amount-based drain overload.
                 // Simulate on the connected face and reject other fluids before changing the tank.
                 simulated = handler.drain(side, amount, false);
+            }
+            if (manualClear
+                    && (simulated == null || simulated.amount <= 0 || !fluid.equals(FluidIdentifier.get(simulated)))) {
+                // A manual clear must also empty hatches whose connected face only accepts fluid.
+                // UNKNOWN accesses the tank internally; automatic crafting extraction keeps its sided access.
+                side = ForgeDirection.UNKNOWN;
+                simulated = handler.drain(side, requested, false);
+                typedDrain = simulated != null && simulated.amount > 0 && fluid.equals(FluidIdentifier.get(simulated));
+                if (!typedDrain) simulated = handler.drain(side, amount, false);
             }
             if (simulated == null || simulated.amount <= 0
                     || !fluid.equals(FluidIdentifier.get(simulated))
