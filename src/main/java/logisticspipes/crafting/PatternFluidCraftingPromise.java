@@ -17,6 +17,13 @@ public class PatternFluidCraftingPromise extends FluidLogisticsPromise implement
         byproductTarget = target;
     }
 
+    /** Keeps excess output tied to the same satellite as the requested part of the recipe result. */
+    @Override
+    public PatternFluidByproductPromise split(int more) {
+        setAmount(getAmount() - more);
+        return new PatternFluidByproductPromise(getLiquid(), more, getSender(), false, byproductTarget);
+    }
+
     public PatternFluidCraftingPromise(FluidIdentifier fluid, int amount, IProvideFluids sender, int patternSlot,
             int resultAmountPerSet) {
         super(fluid, amount, sender, ResourceType.CRAFTING);

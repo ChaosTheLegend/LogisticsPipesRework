@@ -17,6 +17,13 @@ public class PatternCraftingPromise extends LogisticsPromise implements PatternB
         byproductTarget = target;
     }
 
+    /** Keeps excess output tied to the same satellite as the requested part of the recipe result. */
+    @Override
+    public PatternItemByproductPromise split(int more) {
+        numberOfItems -= more;
+        return new PatternItemByproductPromise(item, more, sender, false, byproductTarget);
+    }
+
     public PatternCraftingPromise(ItemIdentifier item, int numberOfItems, IProvideItems sender, int patternSlot,
             int resultAmountPerSet) {
         super(item, numberOfItems, sender, ResourceType.CRAFTING);
