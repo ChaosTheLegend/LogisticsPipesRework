@@ -39,6 +39,7 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
     private static final int C_SATELLITE = 2;
     private static final int C_IMPORT = 3;
     private static final int C_REFRESH_SATELLITES = 4;
+    private static final int C_MAIN_OUTPUT = 5;
 
     private static final int S_SATELLITES = 100;
     private static final int S_SELECT = 101;
@@ -119,6 +120,10 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
         syncToServer(C_IMPORT, buf -> buf.writeNBTTagCompoundToBuffer(recipe.writeToNBT()));
     }
 
+    public void selectMainOutput(int outputSlot) {
+        syncToServer(C_MAIN_OUTPUT, buf -> buf.writeVarIntToBuffer(outputSlot));
+    }
+
     public void refreshSatellites() {
         syncToServer(C_REFRESH_SATELLITES);
     }
@@ -162,6 +167,13 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
                     buf.readBoolean());
             case C_IMPORT -> applyImport(PatternRecipeImport.readFromNBT(buf.readNBTTagCompoundFromBuffer()));
             case C_REFRESH_SATELLITES -> sendSatellites();
+            case C_MAIN_OUTPUT -> {
+                int outputSlot = buf.readVarIntFromBuffer();
+                if (state.hasPattern()) {
+                    state.getPattern().setMainOutputSlot(outputSlot);
+                    state.markChanged();
+                }
+            }
             default -> {}
         }
     }
@@ -235,7 +247,22 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
                     new String[] { old.getSatelliteUuidForInputSlot(slot),
                             old.getFluidSatelliteUuidForInputSlot(slot) });
         }
-        List<IPatternStack> outputs = old.getOutputs();
+        List<IPatternStack> outputs = new ArrayList<>();
+        List<int[]> byproductIds = new ArrayList<>();
+        List<String[]> byproductUuids = new ArrayList<>();
+        int mainOutput = -1;
+        for (int slot = 0; slot < old.getResultSlotCount(); slot++) {
+            IPatternStack output = old.getPatternStackInSlot(old.getResultSlotStart() + slot);
+            if (output == null) continue;
+            if (slot == old.getMainOutputSlot()) mainOutput = outputs.size();
+            outputs.add(output);
+            byproductIds.add(
+                    new int[] { old.getByproductSatelliteIdForOutputSlot(slot),
+                            old.getFluidByproductSatelliteIdForOutputSlot(slot) });
+            byproductUuids.add(
+                    new String[] { old.getByproductSatelliteUuidForOutputSlot(slot),
+                            old.getFluidByproductSatelliteUuidForOutputSlot(slot) });
+        }
         boolean toProcessing = !ItemPattern.isProcessingPattern(stack);
         ItemPattern.setProcessingPattern(stack, toProcessing);
         AbstractPattern next = ItemPattern.fromStack(stack);
@@ -249,7 +276,10 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
         }
         for (int i = 0; i < outputs.size(); i++) {
             next.setPatternStackInSlot(next.getResultSlotStart() + i, outputs.get(i));
+            next.setByproductSatelliteTargetForOutputSlot(i, byproductIds.get(i)[0], byproductUuids.get(i)[0]);
+            next.setFluidByproductSatelliteTargetForOutputSlot(i, byproductIds.get(i)[1], byproductUuids.get(i)[1]);
         }
+        next.setMainOutputSlot(mainOutput);
     }
 
     /**
@@ -261,10 +291,17 @@ public class PatternEditorSyncHandler extends SyncHandler<PatternEditorSyncHandl
             return;
         }
         AbstractPattern pattern = ItemPattern.fromStack(stack);
-        if (inputSlot < 0 || inputSlot >= pattern.getIngredientSlotCount()) {
+        if (inputSlot < 0 || inputSlot >= pattern.getItemSlotCount()) {
             return;
         }
-        if (fluid) {
+        if (inputSlot >= pattern.getResultSlotStart()) {
+            int outputSlot = inputSlot - pattern.getResultSlotStart();
+            if (fluid) {
+                pattern.setFluidByproductSatelliteTargetForOutputSlot(outputSlot, satelliteId, satelliteUuid);
+            } else {
+                pattern.setByproductSatelliteTargetForOutputSlot(outputSlot, satelliteId, satelliteUuid);
+            }
+        } else if (fluid) {
             pattern.setFluidSatelliteTargetForInputSlot(inputSlot, satelliteId, satelliteUuid);
         } else {
             pattern.setSatelliteTargetForInputSlot(inputSlot, satelliteId, satelliteUuid);
