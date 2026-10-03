@@ -2,9 +2,7 @@ package logisticspipes.crafting;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.ISidedInventory;
@@ -41,90 +39,18 @@ import logisticspipes.utils.item.ItemIdentifierStack;
  * adjacency scan.
  * </p>
  */
-public final class PatternSatelliteByproductExtractor {
+final class PatternSatelliteByproductExtractor {
 
     private static final int ADJACENT_HANDLER_CACHE_TICKS = 40;
 
     private final CoreRoutedPipe satellite;
-    private final boolean manualClear;
     private List<AdjacentTile> itemTargets = Collections.emptyList();
     private List<AdjacentTile> fluidTargets = Collections.emptyList();
     private long itemTargetsValidUntil = Long.MIN_VALUE;
     private long fluidTargetsValidUntil = Long.MIN_VALUE;
 
     PatternSatelliteByproductExtractor(CoreRoutedPipe satellite) {
-        this(satellite, false);
-    }
-
-    private PatternSatelliteByproductExtractor(CoreRoutedPipe satellite, boolean manualClear) {
         this.satellite = satellite;
-        this.manualClear = manualClear;
-    }
-
-    /** Clears extractable contents to available storage sinks, leaving contents in place when storage is full. */
-    public static void clearInventory(CoreRoutedPipe pipe) {
-        if (pipe.getWorld() == null || MainProxy.isClient(pipe.getWorld())) return;
-        PatternSatelliteByproductExtractor extractor = new PatternSatelliteByproductExtractor(pipe, true);
-        Map<ItemIdentifier, Integer> items = new HashMap<>();
-        for (AdjacentTile target : extractor.getItemTargets()) {
-            IInventory inventory = extractor.extractionInventory(target);
-            if (inventory == null) continue;
-            SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inventory, target.orientation.getOpposite())
-                    .getItemsAndCount().forEach((item, count) -> items.merge(item, count, Integer::sum));
-        }
-        for (var entry : items.entrySet()) {
-            int remaining = entry.getValue();
-            while (remaining > 0) {
-                var sink = SimpleServiceLocator.logisticsManager.hasDestination(
-                        entry.getKey(),
-                        true,
-                        pipe.getRouter().getSimpleID(),
-                        Collections.singletonList(pipe.getRouter().getSimpleID()));
-                if (sink == null || sink.getValue1() == null || sink.getValue1() <= 0 || sink.getValue2() == null)
-                    break;
-                int amount = Math.min(remaining, entry.getKey().makeNormalStack(1).getMaxStackSize());
-                if (sink.getValue2().maxNumberOfItems > 0) amount = Math.min(amount, sink.getValue2().maxNumberOfItems);
-                var result = extractor.extractItem(entry.getKey(), amount, sink.getValue1(), sink.getValue2().addInfo);
-                if (result.amount() <= 0) break;
-                remaining -= result.amount();
-            }
-        }
-        Map<FluidIdentifier, Long> fluids = new HashMap<>();
-        for (AdjacentTile target : extractor.getFluidTargets()) {
-            if (SimpleServiceLocator.specialTankHandler.hasHandlerFor(target.tile)
-                    && SimpleServiceLocator.specialTankHandler
-                            .getTankHandlerFor(target.tile) instanceof ISpecialTankAccessHandler special) {
-                special.getAvailableLiquid(target.tile)
-                        .forEach((fluid, count) -> fluids.merge(fluid, count, Long::sum));
-            } else if (target.tile instanceof IFluidHandler handler) {
-                var tanks = handler.getTankInfo(target.orientation.getOpposite());
-                if (tanks == null) continue;
-                for (var tank : tanks) {
-                    if (tank != null && tank.fluid != null && tank.fluid.amount > 0)
-                        fluids.merge(FluidIdentifier.get(tank.fluid), (long) tank.fluid.amount, Long::sum);
-                }
-            }
-        }
-        for (var entry : fluids.entrySet()) {
-            long remaining = entry.getValue();
-            while (remaining > 0) {
-                int amount = (int) Math
-                        .min(remaining, logisticspipes.config.Configs.MAX_LOGISTICS_FLUID_TRANSPORT_INNER_CAPACITY / 2);
-                var sink = SimpleServiceLocator.logisticsFluidManager.getBestReply(
-                        entry.getKey().makeFluidStack(amount),
-                        pipe.getRouter(),
-                        Collections.singletonList(pipe.getRouter().getSimpleID()));
-                if (sink == null || sink.getValue1() == null
-                        || sink.getValue1() <= 0
-                        || sink.getValue2() == null
-                        || sink.getValue2() <= 0)
-                    break;
-                var result = extractor
-                        .extractFluid(entry.getKey(), Math.min(amount, sink.getValue2()), sink.getValue1(), null);
-                if (result.amount() <= 0) break;
-                remaining -= result.amount();
-            }
-        }
     }
 
     private static int fluidEnergy(int amount) {
@@ -208,15 +134,6 @@ public final class PatternSatelliteByproductExtractor {
                 // Some hatch handlers implement only the amount-based drain overload.
                 // Simulate on the connected face and reject other fluids before changing the tank.
                 simulated = handler.drain(side, amount, false);
-            }
-            if (manualClear
-                    && (simulated == null || simulated.amount <= 0 || !fluid.equals(FluidIdentifier.get(simulated)))) {
-                // A manual clear must also empty hatches whose connected face only accepts fluid.
-                // UNKNOWN accesses the tank internally; automatic crafting extraction keeps its sided access.
-                side = ForgeDirection.UNKNOWN;
-                simulated = handler.drain(side, requested, false);
-                typedDrain = simulated != null && simulated.amount > 0 && fluid.equals(FluidIdentifier.get(simulated));
-                if (!typedDrain) simulated = handler.drain(side, amount, false);
             }
             if (simulated == null || simulated.amount <= 0
                     || !fluid.equals(FluidIdentifier.get(simulated))
