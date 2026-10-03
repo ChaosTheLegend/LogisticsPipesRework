@@ -13,6 +13,7 @@ import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 
+import cpw.mods.fml.common.Loader;
 import logisticspipes.crafting.patternStack.PatternFluidStack;
 import logisticspipes.items.LogisticsFluidContainer;
 
@@ -107,7 +108,8 @@ public class PatternIngredientSlot extends PhantomItemSlot {
         }
         badgeDraw.run();
         ItemStack stack = getSlot().getStack();
-        if (stack != null && stack.getItem() instanceof LogisticsFluidContainer) {
+        // NEI's GregTech fluid renderer already draws the amount.
+        if (!Loader.isModLoaded("gregtech") && stack != null && stack.getItem() instanceof LogisticsFluidContainer) {
             PatternFluidStack fluid = PatternFluidStack.fromItemStack(stack);
             if (fluid != null) {
                 PatternGuiDraw
