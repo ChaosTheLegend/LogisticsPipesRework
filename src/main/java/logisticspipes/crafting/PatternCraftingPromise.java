@@ -7,10 +7,15 @@ import logisticspipes.utils.item.ItemIdentifier;
 import lombok.Getter;
 
 @Getter
-public class PatternCraftingPromise extends LogisticsPromise {
+public class PatternCraftingPromise extends LogisticsPromise implements PatternByproductPromise {
 
     private final int patternSlot;
     private final int resultAmountPerSet;
+    private PatternByproductTarget byproductTarget;
+
+    public void setByproductTarget(PatternByproductTarget target) {
+        byproductTarget = target;
+    }
 
     public PatternCraftingPromise(ItemIdentifier item, int numberOfItems, IProvideItems sender, int patternSlot,
             int resultAmountPerSet) {
@@ -21,13 +26,15 @@ public class PatternCraftingPromise extends LogisticsPromise {
 
     @Override
     public PatternCraftingPromise copy() {
-        return new PatternCraftingPromise(item, numberOfItems, sender, patternSlot, resultAmountPerSet);
+        return copyWithAmount(numberOfItems);
     }
 
     /**
      * Returns a resized copy while preserving the pattern metadata needed for staged crafting.
      */
     public PatternCraftingPromise copyWithAmount(int amount) {
-        return new PatternCraftingPromise(item, amount, sender, patternSlot, resultAmountPerSet);
+        PatternCraftingPromise copy = new PatternCraftingPromise(item, amount, sender, patternSlot, resultAmountPerSet);
+        copy.setByproductTarget(byproductTarget);
+        return copy;
     }
 }

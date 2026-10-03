@@ -86,6 +86,7 @@ class PatternCraftingTemplateBuilder {
                     slot,
                     recipe.getIngredientSlotCount());
             addPatternIngredients(template, recipe, slot);
+            template.setOutputTarget(itemByproductTarget(recipe, slot, outputSlot));
             addItemResultByproducts(template, recipe, outputSlot);
             return template;
         }
@@ -114,6 +115,7 @@ class PatternCraftingTemplateBuilder {
                     0,
                     slot);
             addPatternIngredients(template, recipe, slot);
+            template.setOutputTarget(fluidByproductTarget(recipe, slot, outputSlot));
             addFluidResultByproducts(template, recipe, outputSlot);
             return template;
         }
@@ -190,10 +192,6 @@ class PatternCraftingTemplateBuilder {
 
     private PatternByproductTarget byproductTarget(int patternSlot, int outputSlot, int satelliteId,
             String satelliteUuid, boolean fluid) {
-        if (!module.hasAdvancedSatelliteUpgrade()) {
-            satelliteId = 0;
-            satelliteUuid = "";
-        }
         return new PatternByproductTarget(patternSlot, outputSlot, satelliteId, satelliteUuid, fluid, null);
     }
 

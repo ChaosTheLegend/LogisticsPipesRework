@@ -493,9 +493,6 @@ class PatternCraftingResultExtractor {
     }
 
     private PatternByproductTarget remoteByproductTarget(LogisticsOrder order, boolean fluid) {
-        if (!module.hasAdvancedSatelliteUpgrade()) {
-            return null;
-        }
         PatternByproductTarget target = order.getByproductTarget();
         return target != null && target.isConfigured() && target.isFluid() == fluid ? target : null;
     }

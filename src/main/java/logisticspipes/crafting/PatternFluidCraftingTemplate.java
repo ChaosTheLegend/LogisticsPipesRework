@@ -16,6 +16,11 @@ public class PatternFluidCraftingTemplate extends FluidCraftingTemplate {
     private final FluidResource result;
     private final ICraftFluids crafter;
     private final int patternSlot;
+    private PatternByproductTarget outputTarget;
+
+    public void setOutputTarget(PatternByproductTarget target) {
+        outputTarget = target;
+    }
 
     public int getPatternSlot() {
         return patternSlot;
@@ -39,12 +44,14 @@ public class PatternFluidCraftingTemplate extends FluidCraftingTemplate {
      */
     @Override
     public PatternFluidCraftingPromise generatePromise(int nResultSets) {
-        return new PatternFluidCraftingPromise(
+        PatternFluidCraftingPromise promise = new PatternFluidCraftingPromise(
                 result.getFluid(),
                 result.getRequestedAmount() * nResultSets,
                 crafter,
                 patternSlot,
                 result.getRequestedAmount());
+        promise.setByproductTarget(outputTarget);
+        return promise;
     }
 
     @Override

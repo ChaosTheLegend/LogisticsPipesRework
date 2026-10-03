@@ -22,6 +22,11 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
     private final List<FluidByproduct> fluidByproducts = new ArrayList<>();
     private final ICraftItems crafter;
     private final int patternSlot;
+    private PatternByproductTarget outputTarget;
+
+    public void setOutputTarget(PatternByproductTarget target) {
+        outputTarget = target;
+    }
 
     public int getPatternSlot() {
         return patternSlot;
@@ -114,12 +119,14 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
      */
     @Override
     public IPromise generatePromise(int nCraftingSetsNeeded) {
-        return new PatternCraftingPromise(
+        PatternCraftingPromise promise = new PatternCraftingPromise(
                 result.getItem(),
                 result.getStackSize() * nCraftingSetsNeeded,
                 crafter,
                 patternSlot,
                 result.getStackSize());
+        promise.setByproductTarget(outputTarget);
+        return promise;
     }
 
     @Override

@@ -105,12 +105,21 @@ final class PatternSatelliteByproductExtractor {
             ForgeDirection side = target.orientation.getOpposite();
             FluidStack requested = fluid.makeFluidStack(amount);
             FluidStack simulated = handler.drain(side, requested, false);
+            boolean typedDrain = simulated != null && simulated.amount > 0
+                    && fluid.equals(FluidIdentifier.get(simulated));
+            if (!typedDrain) {
+                // Some hatch handlers implement only the amount-based drain overload.
+                // Simulate on the connected face and reject other fluids before changing the tank.
+                simulated = handler.drain(side, amount, false);
+            }
             if (simulated == null || simulated.amount <= 0
                     || !fluid.equals(FluidIdentifier.get(simulated))
                     || !satellite.useEnergy(Math.min(amount, simulated.amount))) {
                 continue;
             }
-            FluidStack drained = handler.drain(side, fluid.makeFluidStack(Math.min(amount, simulated.amount)), true);
+            int toDrain = Math.min(amount, simulated.amount);
+            FluidStack drained = typedDrain ? handler.drain(side, fluid.makeFluidStack(toDrain), true)
+                    : handler.drain(side, toDrain, true);
             if (drained == null || drained.amount <= 0 || !fluid.equals(FluidIdentifier.get(drained))) {
                 continue;
             }
@@ -146,6 +155,7 @@ final class PatternSatelliteByproductExtractor {
         for (AdjacentTile target : worldUtil.getAdjacentTileEntities(true)) {
             if (target == null || target.tile == null
                     || SimpleServiceLocator.pipeInformationManager.isItemPipe(target.tile)
+                    || SimpleServiceLocator.pipeInformationManager.isFluidPipe(target.tile)
                     || (items && !(target.tile instanceof IInventory))
                     || (!items && !(target.tile instanceof IFluidHandler))) {
                 continue;
