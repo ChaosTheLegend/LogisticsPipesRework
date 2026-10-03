@@ -32,7 +32,7 @@ public final class SatelliteInventoryClearer {
             if (SimpleServiceLocator.pipeInformationManager.isItemPipe(target.tile)
                     || SimpleServiceLocator.pipeInformationManager.isFluidPipe(target.tile))
                 continue;
-            if (target.tile instanceof IInventory inventory) {
+            if (!pipe.isFluidPipe() && target.tile instanceof IInventory inventory) {
                 for (int slot = 0; slot < inventory.getSizeInventory(); slot++) {
                     ItemStack stack = inventory.getStackInSlot(slot);
                     if (stack == null || stack.stackSize <= 0) continue;
@@ -49,6 +49,7 @@ public final class SatelliteInventoryClearer {
                 }
                 inventory.markDirty();
             }
+            if (!pipe.isFluidPipe()) continue;
             if (SimpleServiceLocator.specialTankHandler.hasHandlerFor(target.tile)
                     && SimpleServiceLocator.specialTankHandler
                             .getTankHandlerFor(target.tile) instanceof ISpecialTankAccessHandler special) {
@@ -119,6 +120,6 @@ public final class SatelliteInventoryClearer {
     private static void queue(CoreRoutedPipe pipe, IRoutedItem item, ForgeDirection from) {
         item.setDestination(-1);
         item.setTransportMode(TransportMode.Active);
-        pipe.queueRoutedItem(item, from);
+        pipe.sendRoutedItemImmediately(item, from);
     }
 }

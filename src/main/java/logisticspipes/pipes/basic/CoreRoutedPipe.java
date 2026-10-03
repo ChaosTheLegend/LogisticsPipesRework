@@ -319,6 +319,11 @@ public abstract class CoreRoutedPipe extends CoreUnroutedPipe
         return 0;
     }
 
+    /** Injects an extracted stack or fluid packet into transport immediately, bypassing the send queue. */
+    public void sendRoutedItemImmediately(IRoutedItem routedItem, ForgeDirection from) {
+        sendRoutedItem(routedItem, from);
+    }
+
     private void sendRoutedItem(IRoutedItem routedItem, ForgeDirection from) {
 
         if (from == null) {
