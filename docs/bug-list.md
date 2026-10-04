@@ -154,6 +154,11 @@ Template:
     ignore stacks in `isEmpty` that match a not-consumed ingredient of the active pattern. Existing patterns (without the flag) must keep working as
     they do now.
 
+### B27: Old extractor pipe filter compatibility
+- **Status:** open
+- **Found:** 2026-09-30, in game
+- **Notes:** Old extractor modules extracted items from chests if they had no filter and were set to "include" filter - this was their default state, now they are not extracting by default - this is intentional, but for the sake of compatibility, old modules with no filter and include mode, should flip to exclide - no filter, new modules should be exclude - no filter by default so they always extract by default
+
 ## Rendering
 
 ### B7: Pipe model doesn't update when a neighbour's shape changes
