@@ -14,6 +14,7 @@ public class RequestTableNetworkEntry implements Comparable<RequestTableNetworkE
     private final boolean fluid;
     private final int networkAmount;
     private final int internalAmount;
+    private final boolean craftable;
 
     /**
      * Creates a new network-list entry.
@@ -22,7 +23,7 @@ public class RequestTableNetworkEntry implements Comparable<RequestTableNetworkE
      * @param fluid whether this entry is a fluid request
      */
     public RequestTableNetworkEntry(ItemIdentifierStack stack, boolean fluid) {
-        this(stack, fluid, stack == null ? 0 : stack.getStackSize(), 0);
+        this(stack, fluid, stack == null ? 0 : stack.getStackSize(), 0, false);
     }
 
     /**
@@ -34,10 +35,25 @@ public class RequestTableNetworkEntry implements Comparable<RequestTableNetworkE
      * @param internalAmount amount currently stored in the request table
      */
     public RequestTableNetworkEntry(ItemIdentifierStack stack, boolean fluid, int networkAmount, int internalAmount) {
+        this(stack, fluid, networkAmount, internalAmount, false);
+    }
+
+    /**
+     * Creates a new network-list entry with separated availability information.
+     *
+     * @param stack          the display and request stack
+     * @param fluid          whether this entry is a fluid request
+     * @param networkAmount  amount currently stored in the logistics network
+     * @param internalAmount amount currently stored in the request table
+     * @param craftable      whether the logistics network can craft this entry
+     */
+    public RequestTableNetworkEntry(ItemIdentifierStack stack, boolean fluid, int networkAmount, int internalAmount,
+            boolean craftable) {
         this.stack = stack;
         this.fluid = fluid;
         this.networkAmount = networkAmount;
         this.internalAmount = internalAmount;
+        this.craftable = craftable;
     }
 
     /**
@@ -73,6 +89,20 @@ public class RequestTableNetworkEntry implements Comparable<RequestTableNetworkE
      */
     public int getTotalAmount() {
         return networkAmount + internalAmount;
+    }
+
+    /**
+     * @return {@code true} when at least one unit is stored in the network or this request table
+     */
+    public boolean isStored() {
+        return getTotalAmount() > 0;
+    }
+
+    /**
+     * @return {@code true} when the logistics network advertises a crafting route for this entry
+     */
+    public boolean isCraftable() {
+        return craftable;
     }
 
     @Override

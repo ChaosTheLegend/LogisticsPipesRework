@@ -63,7 +63,9 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
     private static final int FLUID_SLOT_UPGRADE_SIZE = 9;
     private static final int FLUID_SEND_CHUNK = 5000;
     private static final String NBT_FLUID_STORAGE = "newRequestTableFluidStorage";
+    private static final String NBT_DISPLAY_SETTINGS = "newRequestTableDisplaySettings";
     private final RequestTableFluidStorage fluidStorage = RequestTableFluidStorage.createDefault();
+    private final RequestTableDisplaySettingsStore displaySettingsStore = new RequestTableDisplaySettingsStore();
     private final PlayerCollectionList requestTableGuiWatchers = new PlayerCollectionList();
 
     /**
@@ -104,20 +106,42 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
         if (MainProxy.isClient(getWorld()) || requestTableGuiWatchers.isEmpty()) {
             return;
         }
-        MainProxy.sendToPlayerList(
-                PacketHandler.getPacket(RequestTableContentPacket.class)
-                        .setEntries(RequestTableRefreshPacket.buildEntries(this)).setTilePos(container),
-                requestTableGuiWatchers);
+        List<RequestTableNetworkEntry> entries = RequestTableRefreshPacket.buildEntries(this);
+        for (EntityPlayer player : requestTableGuiWatchers.players()) {
+            if (player != null) {
+                sendNetworkContentToPlayer(player, entries);
+            }
+        }
     }
 
     private void sendNetworkContentToPlayer(EntityPlayer player) {
         if (MainProxy.isClient(getWorld())) {
             return;
         }
+        sendNetworkContentToPlayer(player, RequestTableRefreshPacket.buildEntries(this));
+    }
+
+    private void sendNetworkContentToPlayer(EntityPlayer player, List<RequestTableNetworkEntry> entries) {
         MainProxy.sendPacketToPlayer(
-                PacketHandler.getPacket(RequestTableContentPacket.class)
-                        .setEntries(RequestTableRefreshPacket.buildEntries(this)).setTilePos(container),
+                PacketHandler.getPacket(RequestTableContentPacket.class).setEntries(entries)
+                        .setDisplaySettings(getDisplaySettings(player)).setTilePos(container),
                 player);
+    }
+
+    /**
+     * Returns the saved view state for this player at this table.
+     */
+    public RequestTableDisplaySettings getDisplaySettings(EntityPlayer player) {
+        return displaySettingsStore.get(player.getUniqueID());
+    }
+
+    /**
+     * Saves the view state for this player at this table.
+     */
+    public void setDisplaySettings(EntityPlayer player, RequestTableDisplaySettings settings) {
+        if (displaySettingsStore.set(player.getUniqueID(), settings) && container != null) {
+            container.markDirty();
+        }
     }
 
     /**
@@ -473,8 +497,7 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
     }
 
     private ItemStack fillContainerFromInternal(FluidIdentifier target, ItemStack cursor) {
-        if (cursor.getItem() instanceof IFluidContainerItem) {
-            IFluidContainerItem container = (IFluidContainerItem) cursor.getItem();
+        if (cursor.getItem() instanceof IFluidContainerItem container) {
             ItemStack filled = cursor.copy();
             boolean changed = false;
             for (int slot = 0; slot < fluidStorage.getSizeInventory(); slot++) {
@@ -545,8 +568,7 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
     }
 
     private ItemStack emptyContainerIntoInternal(ItemStack cursor, FluidStack held) {
-        if (cursor.getItem() instanceof IFluidContainerItem) {
-            IFluidContainerItem container = (IFluidContainerItem) cursor.getItem();
+        if (cursor.getItem() instanceof IFluidContainerItem container) {
             ItemStack drainedContainer = cursor.copy();
             int accepted = fluidStorage.fill(held, false);
             if (accepted <= 0) {
@@ -1108,6 +1130,7 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
     public void readFromNBT(NBTTagCompound tag) {
         super.readFromNBT(tag);
         fluidStorage.readFromNBT(tag, NBT_FLUID_STORAGE);
+        displaySettingsStore.readFromNBT(tag, NBT_DISPLAY_SETTINGS);
         updateStorageUpgrades();
     }
 
@@ -1116,6 +1139,7 @@ public class RequestTablePipe extends PipeBlockRequestTable implements IRequestF
         updateStorageUpgrades();
         super.writeToNBT(tag);
         fluidStorage.writeToNBT(tag, NBT_FLUID_STORAGE);
+        displaySettingsStore.writeToNBT(tag, NBT_DISPLAY_SETTINGS);
     }
 
     private static class IngredientUse {

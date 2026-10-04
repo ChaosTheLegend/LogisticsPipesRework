@@ -1,10 +1,6 @@
 package logisticspipes.crafting;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -22,6 +18,7 @@ import logisticspipes.routing.FluidLogisticsPromise;
 import logisticspipes.routing.LogisticsPromise;
 import logisticspipes.routing.order.IOrderInfoProvider;
 import logisticspipes.routing.order.IOrderInfoProvider.ResourceType;
+import logisticspipes.routing.order.LogisticsOrder;
 import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.item.ItemIdentifier;
 import logisticspipes.utils.item.ItemIdentifierStack;
@@ -41,22 +38,24 @@ public class PatternCraftingBranch {
     private static final String BYPRODUCTS_TAG = "byproducts";
     private static final String ORIGINAL_EXTRA_AMOUNT_TAG = "originalExtraAmount";
     private static final String SUB_REQUESTS_TAG = "subRequests";
+    private static final String REFERENCE_PREFIX = "branch";
     private static final int TAG_COMPOUND = 10;
 
     @Getter
     private final IResource requestType;
     private final IAdditionalTargetInformation info;
     private final int originalAmount;
-    @Getter
-    private int remainingAmount;
     private final int originalCraftingAmount;
     private final int originalCraftingSets;
-    private int remainingCraftingAmount;
     private final List<PromiseState> promises;
     private final List<ExtraState> extraPromises;
     private final List<ExtraState> byproducts;
     private final List<PatternCraftingBranch> subRequests;
     private final List<IOrderInfoProvider> liveOrders = new ArrayList<>();
+    @Getter
+    private int remainingAmount;
+    private int remainingCraftingAmount;
+    private PatternCraftingReference reference;
     private transient ModulePatternCrafting debugModule;
 
     /**
@@ -107,8 +106,179 @@ public class PatternCraftingBranch {
         this.originalCraftingSets = countCraftingSets(promises);
         this.remainingCraftingAmount = remainingCraftingAmount;
         this.extraPromises = extraPromises;
-        this.byproducts = byproducts;
+        this.byproducts = mergeByproductStates(byproducts);
         this.subRequests = mergeCompatibleBranches(subRequests);
+    }
+
+    static PatternCraftingBranch readFromNBT(NBTTagCompound tag) {
+        IResource requestType = PatternCraftingPersistence.readResource(tag.getCompoundTag(REQUEST_TYPE_TAG));
+        PatternCraftingBranch branch = new PatternCraftingBranch(
+                requestType,
+                PatternCraftingPersistence.readTargetInfoFromParent(tag),
+                tag.getInteger(ORIGINAL_AMOUNT_TAG),
+                tag.getInteger(REMAINING_AMOUNT_TAG),
+                tag.getInteger(ORIGINAL_CRAFTING_AMOUNT_TAG),
+                tag.getInteger(REMAINING_CRAFTING_AMOUNT_TAG),
+                readPromiseStates(tag.getTagList(PROMISES_TAG, TAG_COMPOUND)),
+                readExtraStates(tag.getTagList(EXTRA_PROMISES_TAG, TAG_COMPOUND)),
+                readExtraStates(tag.getTagList(BYPRODUCTS_TAG, TAG_COMPOUND)),
+                readSubRequests(tag.getTagList(SUB_REQUESTS_TAG, TAG_COMPOUND)));
+        branch.reference = PatternCraftingReference.readFromNBT(tag, REFERENCE_PREFIX);
+        return branch;
+    }
+
+    /**
+     * Combines equivalent sibling branches that were split while the request tree probed partial crafting capacity.
+     */
+    private static List<PatternCraftingBranch> mergeCompatibleBranches(List<PatternCraftingBranch> branches) {
+        List<PatternCraftingBranch> merged = new ArrayList<>();
+        for (PatternCraftingBranch branch : branches) {
+            int index = findCompatibleBranch(merged, branch);
+            if (index < 0) {
+                merged.add(branch);
+            } else {
+                merged.set(index, merged.get(index).mergeWith(branch));
+            }
+        }
+        return merged;
+    }
+
+    private static int findCompatibleBranch(List<PatternCraftingBranch> branches, PatternCraftingBranch candidate) {
+        for (int i = 0; i < branches.size(); i++) {
+            if (branches.get(i).canMergeWith(candidate)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static List<PromiseState> copyPromiseStates(List<IPromise> promises) {
+        List<PromiseState> result = new ArrayList<>();
+        for (IPromise promise : promises) {
+            result.add(new PromiseState(promise.copy(), promise.getAmount(), false));
+        }
+        return result;
+    }
+
+    /**
+     * Copies extra promises with their original branch amount.
+     */
+    private static List<ExtraState> copyExtraStates(List<IExtraPromise> promises) {
+        List<ExtraState> result = new ArrayList<>();
+        for (IExtraPromise promise : promises) {
+            result.add(new ExtraState(promise.copy()));
+        }
+        return result;
+    }
+
+    private static List<PromiseState> readPromiseStates(NBTTagList list) {
+        List<PromiseState> result = new ArrayList<>();
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound stateTag = list.getCompoundTagAt(i);
+            IPromise promise = PatternCraftingPersistence.readPromise(stateTag.getCompoundTag(PROMISE_TAG));
+            // Provider reservation maps are runtime-only. Restored branches reserve their remaining provider promises
+            // after all orders have been recreated, so this flag intentionally starts clear after loading.
+            result.add(new PromiseState(promise, stateTag.getInteger(REMAINING_AMOUNT_TAG), false));
+        }
+        return result;
+    }
+
+    private static List<ExtraState> readExtraStates(NBTTagList list) {
+        List<ExtraState> result = new ArrayList<>();
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound stateTag = list.getCompoundTagAt(i);
+            IExtraPromise promise = PatternCraftingPersistence.readExtraPromise(stateTag.getCompoundTag(PROMISE_TAG));
+            result.add(new ExtraState(promise, stateTag.getInteger(ORIGINAL_EXTRA_AMOUNT_TAG)));
+        }
+        return result;
+    }
+
+    private static List<PatternCraftingBranch> readSubRequests(NBTTagList list) {
+        List<PatternCraftingBranch> result = new ArrayList<>();
+        for (int i = 0; i < list.tagCount(); i++) {
+            result.add(readFromNBT(list.getCompoundTagAt(i)));
+        }
+        return result;
+    }
+
+    /**
+     * Counts how much of this branch is fulfilled by crafting promises and can therefore produce extras or byproducts.
+     */
+    private static int countCraftingAmount(List<PromiseState> promises) {
+        int amount = 0;
+        for (PromiseState promise : promises) {
+            if (promise.promise.getType() == ResourceType.CRAFTING) {
+                amount += promise.remainingAmount;
+            }
+        }
+        return amount;
+    }
+
+    /**
+     * Counts the crafting sets represented by the original promise amounts.
+     */
+    private static int countCraftingSets(List<PromiseState> promises) {
+        int sets = 0;
+        for (PromiseState promise : promises) {
+            if (promise.promise.getType() == ResourceType.CRAFTING) {
+                sets += craftingSetsForAmount(promise.promise, promise.promise.getAmount());
+            }
+        }
+        return sets;
+    }
+
+    private static int craftingSetsForAmount(IPromise promise, int amount) {
+        if (amount <= 0) {
+            return 0;
+        }
+        int resultAmountPerSet = resultAmountPerSet(promise);
+        return (amount + resultAmountPerSet - 1) / resultAmountPerSet;
+    }
+
+    private static int resultAmountPerSet(IPromise promise) {
+        if (promise instanceof PatternCraftingPromise) {
+            return Math.max(1, ((PatternCraftingPromise) promise).getResultAmountPerSet());
+        }
+        if (promise instanceof PatternFluidCraftingPromise) {
+            return Math.max(1, ((PatternFluidCraftingPromise) promise).getResultAmountPerSet());
+        }
+        return 1;
+    }
+
+    /**
+     * Creates a promise copy with the requested amount while keeping the source promise untouched.
+     */
+    private static IPromise copyPromiseForAmount(IPromise promise, int amount) {
+        if (promise instanceof PatternCraftingPromise) {
+            return ((PatternCraftingPromise) promise).copyWithAmount(amount);
+        }
+        if (promise instanceof FluidLogisticsPromise) {
+            return ((FluidLogisticsPromise) promise).copyWithAmount(amount);
+        }
+        IPromise copy = promise.copy();
+        if (copy instanceof LogisticsPromise) {
+            ((LogisticsPromise) copy).numberOfItems = amount;
+            return copy;
+        }
+        if (copy.getAmount() > amount) {
+            copy.split(copy.getAmount() - amount);
+        }
+        return copy;
+    }
+
+    /**
+     * Scales {@code amount} by {@code numerator / denominator}, rounding up so partial craft sets are represented.
+     */
+    private static int scaleAmount(int amount, int numerator, int denominator) {
+        if (amount <= 0 || numerator <= 0 || denominator <= 0) {
+            return 0;
+        }
+        long scaled = (long) amount * numerator;
+        int result = (int) (scaled / denominator);
+        if (scaled % denominator != 0) {
+            result++;
+        }
+        return Math.min(amount, result);
     }
 
     /**
@@ -126,13 +296,6 @@ public class PatternCraftingBranch {
     }
 
     /**
-     * Returns the live logistics orders that have been spawned from this branch.
-     */
-    List<IOrderInfoProvider> getLiveOrders() {
-        return Collections.unmodifiableList(liveOrders);
-    }
-
-    /**
      * The module that receives debug events from this branch
      *
      * @param module the module
@@ -144,12 +307,108 @@ public class PatternCraftingBranch {
         }
     }
 
+    private static List<ExtraState> mergeByproductStates(List<ExtraState> states) {
+        List<ExtraState> result = new ArrayList<>();
+        for (ExtraState state : states) {
+            ExtraState matching = null;
+            for (ExtraState candidate : result) {
+                if (candidate.promise.getClass() == state.promise.getClass()
+                        && candidate.promise.getProvider() == state.promise.getProvider()
+                        && candidate.promise.getItemType().equals(state.promise.getItemType())
+                        && Objects.equals(byproductTarget(candidate.promise), byproductTarget(state.promise))) {
+                    matching = candidate;
+                    break;
+                }
+            }
+            if (matching == null) {
+                result.add(state);
+            } else {
+                IExtraPromise combined = matching.promise.copy();
+                combined.setAmount(matching.originalAmount + state.originalAmount);
+                result.set(result.indexOf(matching), new ExtraState(combined));
+            }
+        }
+        return result;
+    }
+
+    private static PatternByproductTarget byproductTarget(IExtraPromise promise) {
+        return promise instanceof PatternByproductPromise byproduct ? byproduct.getByproductTarget() : null;
+    }
+
+    private boolean producesByproduct(IPromise promise, IExtraPromise byproduct) {
+        if (promise.getType() != ResourceType.CRAFTING || promise.getProvider() != byproduct.getProvider()) {
+            return false;
+        }
+        PatternByproductTarget target = byproductTarget(byproduct);
+        if (target == null || target.getPatternSlot() < 0) {
+            return true;
+        }
+        if (promise instanceof PatternCraftingPromise patternPromise) {
+            return patternPromise.getPatternSlot() == target.getPatternSlot();
+        }
+        if (promise instanceof PatternFluidCraftingPromise patternPromise) {
+            return patternPromise.getPatternSlot() == target.getPatternSlot();
+        }
+        return false;
+    }
+
+    private int byproductAmountForNext(ExtraState state, int craftingAmount) {
+        int before = 0;
+        int after = 0;
+        int total = 0;
+        int left = Math.min(craftingAmount, remainingCraftingAmount);
+        for (PromiseState promise : promises) {
+            if (promise.promise.getType() != ResourceType.CRAFTING) {
+                continue;
+            }
+            int moved = Math.min(left, promise.remainingAmount);
+            left -= moved;
+            if (!producesByproduct(promise.promise, state.promise)) {
+                continue;
+            }
+            int consumed = promise.promise.getAmount() - promise.remainingAmount;
+            before += craftingSetsForAmount(promise.promise, consumed);
+            after += craftingSetsForAmount(promise.promise, consumed + moved);
+            total += craftingSetsForAmount(promise.promise, promise.promise.getAmount());
+        }
+        return state.amountForRange(before, after, total);
+    }
+
+    int getCraftingSets() {
+        return originalCraftingSets;
+    }
+
+    List<IExtraPromise> getByproductPromises() {
+        List<IExtraPromise> result = new ArrayList<>();
+        for (ExtraState state : byproducts) {
+            IExtraPromise promise = state.promise.copy();
+            promise.setAmount(state.originalAmount);
+            result.add(promise);
+        }
+        return result;
+    }
+
+    void bindToInstance(PatternCraftingReference ownerReference) {
+        if (ownerReference == null) {
+            return;
+        }
+        if (reference == null || !reference.belongsTo(ownerReference)) {
+            reference = ownerReference.createChild();
+        }
+        for (PatternCraftingBranch child : subRequests) {
+            child.bindToInstance(ownerReference);
+        }
+    }
+
     void writeToNBT(NBTTagCompound tag) {
         NBTTagCompound resourceTag = new NBTTagCompound();
         if (PatternCraftingPersistence.writeResource(resourceTag, requestType)) {
             tag.setTag(REQUEST_TYPE_TAG, resourceTag);
         }
         PatternCraftingPersistence.writeTargetInfo(tag, info);
+        if (reference != null) {
+            reference.writeToNBT(tag, REFERENCE_PREFIX);
+        }
         tag.setInteger(ORIGINAL_AMOUNT_TAG, originalAmount);
         tag.setInteger(REMAINING_AMOUNT_TAG, remainingAmount);
         tag.setInteger(ORIGINAL_CRAFTING_AMOUNT_TAG, originalCraftingAmount);
@@ -160,28 +419,14 @@ public class PatternCraftingBranch {
         tag.setTag(SUB_REQUESTS_TAG, writeSubRequests());
     }
 
-    static PatternCraftingBranch readFromNBT(NBTTagCompound tag) {
-        IResource requestType = PatternCraftingPersistence.readResource(tag.getCompoundTag(REQUEST_TYPE_TAG));
-        return new PatternCraftingBranch(
-                requestType,
-                PatternCraftingPersistence.readTargetInfoFromParent(tag),
-                tag.getInteger(ORIGINAL_AMOUNT_TAG),
-                tag.getInteger(REMAINING_AMOUNT_TAG),
-                tag.getInteger(ORIGINAL_CRAFTING_AMOUNT_TAG),
-                tag.getInteger(REMAINING_CRAFTING_AMOUNT_TAG),
-                readPromiseStates(tag.getTagList(PROMISES_TAG, TAG_COMPOUND)),
-                readExtraStates(tag.getTagList(EXTRA_PROMISES_TAG, TAG_COMPOUND)),
-                readExtraStates(tag.getTagList(BYPRODUCTS_TAG, TAG_COMPOUND)),
-                readSubRequests(tag.getTagList(SUB_REQUESTS_TAG, TAG_COMPOUND)));
-    }
-
     /**
      * Appends the remaining staged branch state to the crafting request debug dump.
      */
     public void appendDebugState(StringBuilder out, String prefix) {
-        out.append(prefix).append("- Branch ").append(requestType).append(" remaining=").append(remainingAmount)
-                .append("/").append(originalAmount).append(" craftingRemaining=").append(remainingCraftingAmount)
-                .append("/").append(originalCraftingAmount).append("\n");
+        out.append(prefix).append("- Branch ").append(requestType).append(" reference=").append(reference)
+                .append(" remaining=").append(remainingAmount).append("/").append(originalAmount)
+                .append(" craftingRemaining=").append(remainingCraftingAmount).append("/")
+                .append(originalCraftingAmount).append("\n");
         appendPromises(out, prefix + "  ");
         appendLiveOrders(out, prefix + "  ");
         appendExtraStates(out, prefix + "  ", "extras", extraPromises);
@@ -237,6 +482,18 @@ public class PatternCraftingBranch {
             }
         }
         return node;
+    }
+
+    void collectNestedCraftingOrders(Set<PatternCraftingOrder> nestedOrders) {
+        for (PatternCraftingBranch subRequest : subRequests) {
+            subRequest.collectNestedCraftingOrders(nestedOrders);
+        }
+        for (IOrderInfoProvider order : liveOrders) {
+            PatternCraftingOrder stagedOrder = PatternCraftingMonitorRegistry.find(order);
+            if (stagedOrder != null && nestedOrders.add(stagedOrder)) {
+                stagedOrder.collectNestedCraftingOrders(nestedOrders);
+            }
+        }
     }
 
     private void debugBranchEvent(String category, String message, Object... args) {
@@ -310,6 +567,7 @@ public class PatternCraftingBranch {
                 targetOverride,
                 fluidTargetOverride,
                 infoOverride);
+
         for (int promiseIndex = 0; promiseIndex < promises.size() && requested < wanted; promiseIndex++) {
             PromiseState promiseState = promises.get(promiseIndex);
             int toRequest = requestAmountForPromiseBatch(promiseIndex, wanted - requested);
@@ -330,6 +588,7 @@ public class PatternCraftingBranch {
                     wanted);
             IPromise promise = copyPromiseForAmount(promiseState.promise, toRequest);
             IResource request = copyRequestForTarget(toRequest, targetOverride, fluidTargetOverride);
+            IAdditionalTargetInformation orderInfo = createOrderTarget(infoOverride);
             IOrderInfoProvider result;
             boolean requestSubRequestsAfterOrder = false;
             if (promise.getType() == ResourceType.CRAFTING
@@ -347,7 +606,7 @@ public class PatternCraftingBranch {
                         promise.getProvider(),
                         infoOverride);
                 result = ((IStagedCraftingProvider) promise.getProvider())
-                        .fullFillStagedCrafting(promise, request, infoOverride, stagedBranch);
+                        .fullFillStagedCrafting(promise, request, orderInfo, stagedBranch);
                 if (result == null) {
                     debugBranchEvent(
                             "BRANCH",
@@ -361,8 +620,15 @@ public class PatternCraftingBranch {
                 if (promise.getType() == ResourceType.CRAFTING) {
                     requestSubRequestsAfterOrder = true;
                 }
-                result = promise.fullFill(request, infoOverride);
+                result = promise.fullFill(request, orderInfo);
             }
+
+            if (result instanceof LogisticsOrder logisticsOrder && logisticsOrder.getCraftingReference() == null
+                    && orderInfo instanceof PatternTargetInformation target
+                    && target.isTracked()) {
+                logisticsOrder.setCraftingReference(target.deliveryReference());
+            }
+
             if (result == null) {
                 debugBranchEvent(
                         "BRANCH",
@@ -373,6 +639,7 @@ public class PatternCraftingBranch {
                         promise.getProvider());
                 continue;
             }
+
             debugBranchEvent(
                     "BRANCH",
                     "branch promise request accepted resource=%s toRequest=%d result=%s type=%s provider=%s",
@@ -389,7 +656,11 @@ public class PatternCraftingBranch {
                 if (promise.getProvider() instanceof IStagedCraftingProvider) {
                     reserveSubRequestsFor(toRequest);
                 }
-                registerExtrasFor(toRequest);
+                if (promise.getProvider() instanceof IStagedCraftingProvider) {
+                    registerOverflowExtrasFor(extraPromises, toRequest);
+                } else {
+                    registerExtrasFor(toRequest);
+                }
                 remainingCraftingAmount -= toRequest;
             }
             consumePromiseBatch(promiseIndex, promiseState.promise, toRequest);
@@ -405,6 +676,7 @@ public class PatternCraftingBranch {
                     remainingAmount,
                     remainingCraftingAmount);
         }
+
         debugBranchEvent(
                 "BRANCH",
                 "branch request end resource=%s requested=%d wanted=%d remaining=%d craftingRemaining=%d",
@@ -414,6 +686,13 @@ public class PatternCraftingBranch {
                 remainingAmount,
                 remainingCraftingAmount);
         return requested;
+    }
+
+    private IAdditionalTargetInformation createOrderTarget(IAdditionalTargetInformation infoOverride) {
+        if (!(infoOverride instanceof PatternTargetInformation target) || target.orderReference() == null) {
+            return infoOverride;
+        }
+        return PatternTargetInformation.delivery(target.patternSlot(), target.inputSlot(), target.orderReference());
     }
 
     private IResource copyRequestForTarget(int amount, IRequestItems targetOverride,
@@ -523,7 +802,7 @@ public class PatternCraftingBranch {
             }
             IExtraPromise promise = state.promise.copy();
             promise.setAmount(state.originalAmount);
-            promise.registerExtras(requestType.copyForDisplayWith(Math.max(1, craftingAmount)));
+            registerExtra(promise, craftingAmount);
             debugBranchEvent(
                     "EXTRA",
                     "branch registered overflow extra resource=%s extra=%s amount=%d craftingAmount=%d",
@@ -548,7 +827,7 @@ public class PatternCraftingBranch {
             }
             IExtraPromise promise = state.promise.copy();
             promise.setAmount(extraAmount);
-            promise.registerExtras(requestType.copyForDisplayWith(Math.max(1, craftingAmount)));
+            registerExtra(promise, craftingAmount);
             debugBranchEvent(
                     "EXTRA",
                     "branch registered byproduct resource=%s byproduct=%s amount=%d sets=%d->%d/%d",
@@ -559,6 +838,32 @@ public class PatternCraftingBranch {
                     consumedSetsAfter,
                     originalCraftingSets);
         }
+    }
+
+    private void registerExtra(IExtraPromise promise, int craftingAmount) {
+        if (reference != null && promise.getProvider() instanceof ModulePatternCrafting patternModule) {
+            patternModule.registerExtras(promise, reference);
+            return;
+        }
+        promise.registerExtras(requestType.copyForDisplayWith(Math.max(1, craftingAmount)));
+    }
+
+    /**
+     * Copies the next {@code amount} items and consumes that amount from this branch.
+     */
+    public PatternCraftingBranch copyAndReserve(int amount) {
+        int copiedAmount = Math.min(amount, remainingAmount);
+        PatternCraftingBranch copy = copyForAmount(copiedAmount);
+        reserve(copiedAmount);
+        debugBranchEvent(
+                "BRANCH",
+                "branch copy and reserve resource=%s requested=%d copied=%d remaining=%d craftingRemaining=%d",
+                requestType,
+                amount,
+                copiedAmount,
+                remainingAmount,
+                remainingCraftingAmount);
+        return copy;
     }
 
     /**
@@ -903,31 +1208,6 @@ public class PatternCraftingBranch {
         return sets;
     }
 
-    /**
-     * Combines equivalent sibling branches that were split while the request tree probed partial crafting capacity.
-     */
-    private static List<PatternCraftingBranch> mergeCompatibleBranches(List<PatternCraftingBranch> branches) {
-        List<PatternCraftingBranch> merged = new ArrayList<>();
-        for (PatternCraftingBranch branch : branches) {
-            int index = findCompatibleBranch(merged, branch);
-            if (index < 0) {
-                merged.add(branch);
-            } else {
-                merged.set(index, merged.get(index).mergeWith(branch));
-            }
-        }
-        return merged;
-    }
-
-    private static int findCompatibleBranch(List<PatternCraftingBranch> branches, PatternCraftingBranch candidate) {
-        for (int i = 0; i < branches.size(); i++) {
-            if (branches.get(i).canMergeWith(candidate)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     private boolean canMergeWith(PatternCraftingBranch other) {
         return other != null && Objects.equals(info, other.info)
                 && requestType.getClass() == other.requestType.getClass()
@@ -955,25 +1235,6 @@ public class PatternCraftingBranch {
                 mergedChildren);
     }
 
-    private static List<PromiseState> copyPromiseStates(List<IPromise> promises) {
-        List<PromiseState> result = new ArrayList<>();
-        for (IPromise promise : promises) {
-            result.add(new PromiseState(promise.copy(), promise.getAmount(), false));
-        }
-        return result;
-    }
-
-    /**
-     * Copies extra promises with their original branch amount.
-     */
-    private static List<ExtraState> copyExtraStates(List<IExtraPromise> promises) {
-        List<ExtraState> result = new ArrayList<>();
-        for (IExtraPromise promise : promises) {
-            result.add(new ExtraState(promise.copy()));
-        }
-        return result;
-    }
-
     private NBTTagList writePromiseStates() {
         NBTTagList list = new NBTTagList();
         for (PromiseState state : promises) {
@@ -988,18 +1249,6 @@ public class PatternCraftingBranch {
             list.appendTag(stateTag);
         }
         return list;
-    }
-
-    private static List<PromiseState> readPromiseStates(NBTTagList list) {
-        List<PromiseState> result = new ArrayList<>();
-        for (int i = 0; i < list.tagCount(); i++) {
-            NBTTagCompound stateTag = list.getCompoundTagAt(i);
-            IPromise promise = PatternCraftingPersistence.readPromise(stateTag.getCompoundTag(PROMISE_TAG));
-            // Provider reservation maps are runtime-only. Restored branches reserve their remaining provider promises
-            // after all orders have been recreated, so this flag intentionally starts clear after loading.
-            result.add(new PromiseState(promise, stateTag.getInteger(REMAINING_AMOUNT_TAG), false));
-        }
-        return result;
     }
 
     private NBTTagList writeExtraStates(List<ExtraState> states) {
@@ -1017,16 +1266,6 @@ public class PatternCraftingBranch {
         return list;
     }
 
-    private static List<ExtraState> readExtraStates(NBTTagList list) {
-        List<ExtraState> result = new ArrayList<>();
-        for (int i = 0; i < list.tagCount(); i++) {
-            NBTTagCompound stateTag = list.getCompoundTagAt(i);
-            IExtraPromise promise = PatternCraftingPersistence.readExtraPromise(stateTag.getCompoundTag(PROMISE_TAG));
-            result.add(new ExtraState(promise, stateTag.getInteger(ORIGINAL_EXTRA_AMOUNT_TAG)));
-        }
-        return result;
-    }
-
     private NBTTagList writeSubRequests() {
         NBTTagList list = new NBTTagList();
         for (PatternCraftingBranch branch : subRequests) {
@@ -1035,14 +1274,6 @@ public class PatternCraftingBranch {
             list.appendTag(branchTag);
         }
         return list;
-    }
-
-    private static List<PatternCraftingBranch> readSubRequests(NBTTagList list) {
-        List<PatternCraftingBranch> result = new ArrayList<>();
-        for (int i = 0; i < list.tagCount(); i++) {
-            result.add(readFromNBT(list.getCompoundTagAt(i)));
-        }
-        return result;
     }
 
     /**
@@ -1071,10 +1302,8 @@ public class PatternCraftingBranch {
      */
     private List<ExtraState> copyByproductStatesFor(List<ExtraState> states, int craftingAmount) {
         List<ExtraState> copied = new ArrayList<>();
-        int consumedSetsBefore = consumedCraftingSetsForNext(0);
-        int consumedSetsAfter = consumedCraftingSetsForNext(craftingAmount);
         for (ExtraState state : states) {
-            int extraAmount = state.amountForRange(consumedSetsBefore, consumedSetsAfter, originalCraftingSets);
+            int extraAmount = byproductAmountForNext(state, craftingAmount);
             if (extraAmount <= 0) {
                 continue;
             }
@@ -1083,86 +1312,6 @@ public class PatternCraftingBranch {
             copied.add(new ExtraState(promise));
         }
         return copied;
-    }
-
-    /**
-     * Counts how much of this branch is fulfilled by crafting promises and can therefore produce extras or byproducts.
-     */
-    private static int countCraftingAmount(List<PromiseState> promises) {
-        int amount = 0;
-        for (PromiseState promise : promises) {
-            if (promise.promise.getType() == ResourceType.CRAFTING) {
-                amount += promise.remainingAmount;
-            }
-        }
-        return amount;
-    }
-
-    /**
-     * Counts the crafting sets represented by the original promise amounts.
-     */
-    private static int countCraftingSets(List<PromiseState> promises) {
-        int sets = 0;
-        for (PromiseState promise : promises) {
-            if (promise.promise.getType() == ResourceType.CRAFTING) {
-                sets += craftingSetsForAmount(promise.promise, promise.promise.getAmount());
-            }
-        }
-        return sets;
-    }
-
-    private static int craftingSetsForAmount(IPromise promise, int amount) {
-        if (amount <= 0) {
-            return 0;
-        }
-        int resultAmountPerSet = resultAmountPerSet(promise);
-        return (amount + resultAmountPerSet - 1) / resultAmountPerSet;
-    }
-
-    private static int resultAmountPerSet(IPromise promise) {
-        if (promise instanceof PatternCraftingPromise) {
-            return Math.max(1, ((PatternCraftingPromise) promise).getResultAmountPerSet());
-        }
-        if (promise instanceof PatternFluidCraftingPromise) {
-            return Math.max(1, ((PatternFluidCraftingPromise) promise).getResultAmountPerSet());
-        }
-        return 1;
-    }
-
-    /**
-     * Creates a promise copy with the requested amount while keeping the source promise untouched.
-     */
-    private static IPromise copyPromiseForAmount(IPromise promise, int amount) {
-        if (promise instanceof PatternCraftingPromise) {
-            return ((PatternCraftingPromise) promise).copyWithAmount(amount);
-        }
-        if (promise instanceof FluidLogisticsPromise) {
-            return ((FluidLogisticsPromise) promise).copyWithAmount(amount);
-        }
-        IPromise copy = promise.copy();
-        if (copy instanceof LogisticsPromise) {
-            ((LogisticsPromise) copy).numberOfItems = amount;
-            return copy;
-        }
-        if (copy.getAmount() > amount) {
-            copy.split(copy.getAmount() - amount);
-        }
-        return copy;
-    }
-
-    /**
-     * Scales {@code amount} by {@code numerator / denominator}, rounding up so partial craft sets are represented.
-     */
-    private static int scaleAmount(int amount, int numerator, int denominator) {
-        if (amount <= 0 || numerator <= 0 || denominator <= 0) {
-            return 0;
-        }
-        long scaled = (long) amount * numerator;
-        int result = (int) (scaled / denominator);
-        if (scaled % denominator != 0) {
-            result++;
-        }
-        return Math.min(amount, result);
     }
 
     private void appendPromises(StringBuilder out, String prefix) {

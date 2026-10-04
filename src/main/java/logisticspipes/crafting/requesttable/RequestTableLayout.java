@@ -32,6 +32,12 @@ public class RequestTableLayout {
     public final int fluidButtonX;
     public final int storageButtonY;
     public final int storageButtonSize;
+    public final int displayButtonX;
+    public final int sortModeButtonY;
+    public final int sortDirectionButtonY;
+    public final int filterModeButtonY;
+    public final int displayButtonWidth;
+    public final int displayButtonHeight;
 
     public final int panelLeft;
     public final int panelTop;
@@ -73,6 +79,13 @@ public class RequestTableLayout {
         storageButtonY = guiTop + 5;
         fluidButtonX = guiLeft + xSize - 28;
         itemButtonX = fluidButtonX - storageButtonSize - 4;
+
+        displayButtonWidth = 44;
+        displayButtonHeight = 18;
+        displayButtonX = Math.max(2, guiLeft - displayButtonWidth - 2);
+        sortModeButtonY = guiTop + HEADER_HEIGHT;
+        sortDirectionButtonY = sortModeButtonY + displayButtonHeight + 3;
+        filterModeButtonY = sortDirectionButtonY + displayButtonHeight + 3;
 
         searchHeight = 14;
         searchY = guiTop + 8;

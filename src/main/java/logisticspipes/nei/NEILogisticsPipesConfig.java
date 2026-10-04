@@ -72,7 +72,7 @@ public class NEILogisticsPipesConfig implements IConfigureNEI {
 
         if (LogisticsPipes.isGTNH) {
 
-            for (gregtech.api.recipe.RecipeMap map : gregtech.api.recipe.RecipeMap.ALL_RECIPE_MAPS.values()) {
+            for (gregtech.api.recipe.RecipeMap<?> map : gregtech.api.recipe.RecipeMap.ALL_RECIPE_MAPS.values()) {
                 if (!map.unlocalizedName.isEmpty()) {
                     API.registerGuiOverlay(logisticspipes.gui.GuiCraftingPipe.class, map.unlocalizedName);
                     API.registerGuiOverlayHandler(

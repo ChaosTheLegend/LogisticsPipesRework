@@ -25,6 +25,7 @@ import logisticspipes.blocks.powertile.LogisticsIC2PowerProviderTileEntity;
 import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.blocks.powertile.LogisticsRFPowerProviderTileEntity;
 import logisticspipes.blocks.stats.LogisticsStatisticsTileEntity;
+import logisticspipes.crafting.CraftingMonitorTileEntity;
 import logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity;
 import logisticspipes.interfaces.IGuiTileEntity;
 import logisticspipes.interfaces.IRotationProvider;
@@ -39,6 +40,7 @@ public class LogisticsSolidBlock extends BlockContainer {
     public static final int LOGISTICS_FUZZYCRAFTING_TABLE = 4;
     public static final int LOGISTICS_STATISTICS_TABLE = 5;
     public static final int LOGISTICS_PATTERN_CRAFTING_TABLE = 6;
+    public static final int LOGISTICS_CRAFTING_MONITOR = 7;
 
     // Power Provider
     public static final int LOGISTICS_RF_POWERPROVIDER = 11;
@@ -153,6 +155,32 @@ public class LogisticsSolidBlock extends BlockContainer {
         return getRotatedTexture(meta, side, 2, 0);
     }
 
+    public static IIcon getNewIcon(int meta) {
+        switch (meta) {
+            case SOLDERING_STATION:
+                return LogisticsSolidBlock.newTextures[1];
+            case LOGISTICS_POWER_JUNCTION:
+                return LogisticsSolidBlock.newTextures[2];
+            case LOGISTICS_SECURITY_STATION:
+                return LogisticsSolidBlock.newTextures[3];
+            case LOGISTICS_AUTOCRAFTING_TABLE:
+                return LogisticsSolidBlock.newTextures[4];
+            case LOGISTICS_FUZZYCRAFTING_TABLE:
+                return LogisticsSolidBlock.newTextures[5];
+            case LOGISTICS_PATTERN_CRAFTING_TABLE:
+                return LogisticsSolidBlock.newTextures[4];
+            case LOGISTICS_STATISTICS_TABLE:
+            case LOGISTICS_CRAFTING_MONITOR:
+                return LogisticsSolidBlock.newTextures[6];
+            case LOGISTICS_RF_POWERPROVIDER:
+                return LogisticsSolidBlock.newTextures[7];
+            case LOGISTICS_IC2_POWERPROVIDER:
+                return LogisticsSolidBlock.newTextures[8];
+            default:
+                return LogisticsSolidBlock.newTextures[0];
+        }
+    }
+
     @Override
     public TileEntity createNewTileEntity(World world, int metadata) {
         switch (metadata) {
@@ -169,6 +197,8 @@ public class LogisticsSolidBlock extends BlockContainer {
                 return new LogisticsStatisticsTileEntity();
             case LOGISTICS_PATTERN_CRAFTING_TABLE:
                 return new PatternLogisticsCraftingTableTileEntity();
+            case LOGISTICS_CRAFTING_MONITOR:
+                return new CraftingMonitorTileEntity();
             case LOGISTICS_RF_POWERPROVIDER:
                 return new LogisticsRFPowerProviderTileEntity();
             case LOGISTICS_IC2_POWERPROVIDER:
@@ -176,23 +206,6 @@ public class LogisticsSolidBlock extends BlockContainer {
             default:
                 return null;
         }
-    }
-
-    @Override
-    public int damageDropped(int par1) {
-        switch (par1) {
-            case SOLDERING_STATION:
-            case LOGISTICS_POWER_JUNCTION:
-            case LOGISTICS_SECURITY_STATION:
-            case LOGISTICS_AUTOCRAFTING_TABLE:
-            case LOGISTICS_FUZZYCRAFTING_TABLE:
-            case LOGISTICS_STATISTICS_TABLE:
-            case LOGISTICS_PATTERN_CRAFTING_TABLE:
-            case LOGISTICS_RF_POWERPROVIDER:
-            case LOGISTICS_IC2_POWERPROVIDER:
-                return par1;
-        }
-        return super.damageDropped(par1);
     }
 
     @Override
@@ -235,6 +248,37 @@ public class LogisticsSolidBlock extends BlockContainer {
                 .registerIcon("logisticspipes:lpsolidblock/powerRFTexture"); // LOGISTICS_RF_POWERPROVIDER
         LogisticsSolidBlock.newTextures[8] = par1IIconRegister
                 .registerIcon("logisticspipes:lpsolidblock/powerIC2Texture"); // LOGISTICS_IC2_POWERPROVIDER
+    }
+
+    @Override
+    public int damageDropped(int par1) {
+        switch (par1) {
+            case SOLDERING_STATION:
+            case LOGISTICS_POWER_JUNCTION:
+            case LOGISTICS_SECURITY_STATION:
+            case LOGISTICS_AUTOCRAFTING_TABLE:
+            case LOGISTICS_FUZZYCRAFTING_TABLE:
+            case LOGISTICS_STATISTICS_TABLE:
+            case LOGISTICS_PATTERN_CRAFTING_TABLE:
+            case LOGISTICS_CRAFTING_MONITOR:
+            case LOGISTICS_RF_POWERPROVIDER:
+            case LOGISTICS_IC2_POWERPROVIDER:
+                return par1;
+        }
+        return super.damageDropped(par1);
+    }
+
+    public static IIcon getNewIcon(IBlockAccess access, int x, int y, int z) {
+        int meta = access.getBlockMetadata(x, y, z);
+        if (meta == LogisticsSolidBlock.SOLDERING_STATION) {
+            TileEntity tile = access.getTileEntity(x, y, z);
+            if (tile instanceof IRotationProvider) {
+                if (((IRotationProvider) tile).getFrontTexture() == 3) {
+                    return LogisticsSolidBlock.newTextures[9];
+                }
+            }
+        }
+        return LogisticsSolidBlock.getNewIcon(meta);
     }
 
     private IIcon getRotatedTexture(int meta, int side, int rotation, int front) {
@@ -338,6 +382,7 @@ public class LogisticsSolidBlock extends BlockContainer {
                         return LogisticsSolidBlock.icons[10];
                 }
             case LOGISTICS_STATISTICS_TABLE:
+            case LOGISTICS_CRAFTING_MONITOR:
                 switch (side) {
                     case 1: // TOP
                         return LogisticsSolidBlock.icons[17];
@@ -366,44 +411,6 @@ public class LogisticsSolidBlock extends BlockContainer {
                 }
             default:
                 return LogisticsSolidBlock.icons[0];
-        }
-    }
-
-    public static IIcon getNewIcon(IBlockAccess access, int x, int y, int z) {
-        int meta = access.getBlockMetadata(x, y, z);
-        if (meta == LogisticsSolidBlock.SOLDERING_STATION) {
-            TileEntity tile = access.getTileEntity(x, y, z);
-            if (tile instanceof IRotationProvider) {
-                if (((IRotationProvider) tile).getFrontTexture() == 3) {
-                    return LogisticsSolidBlock.newTextures[9];
-                }
-            }
-        }
-        return LogisticsSolidBlock.getNewIcon(meta);
-    }
-
-    public static IIcon getNewIcon(int meta) {
-        switch (meta) {
-            case SOLDERING_STATION:
-                return LogisticsSolidBlock.newTextures[1];
-            case LOGISTICS_POWER_JUNCTION:
-                return LogisticsSolidBlock.newTextures[2];
-            case LOGISTICS_SECURITY_STATION:
-                return LogisticsSolidBlock.newTextures[3];
-            case LOGISTICS_AUTOCRAFTING_TABLE:
-                return LogisticsSolidBlock.newTextures[4];
-            case LOGISTICS_FUZZYCRAFTING_TABLE:
-                return LogisticsSolidBlock.newTextures[5];
-            case LOGISTICS_PATTERN_CRAFTING_TABLE:
-                return LogisticsSolidBlock.newTextures[4];
-            case LOGISTICS_STATISTICS_TABLE:
-                return LogisticsSolidBlock.newTextures[6];
-            case LOGISTICS_RF_POWERPROVIDER:
-                return LogisticsSolidBlock.newTextures[7];
-            case LOGISTICS_IC2_POWERPROVIDER:
-                return LogisticsSolidBlock.newTextures[8];
-            default:
-                return LogisticsSolidBlock.newTextures[0];
         }
     }
 }

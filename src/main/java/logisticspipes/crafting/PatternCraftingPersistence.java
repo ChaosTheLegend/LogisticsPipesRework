@@ -47,6 +47,8 @@ final class PatternCraftingPersistence {
     private static final String ITEM_EXTRA_PROMISE_KIND = "itemExtra";
     private static final String DICT_EXTRA_PROMISE_KIND = "dictExtra";
     private static final String FLUID_EXTRA_PROMISE_KIND = "fluidExtra";
+    private static final String PATTERN_ITEM_EXTRA_PROMISE_KIND = "patternItemExtra";
+    private static final String PATTERN_FLUID_EXTRA_PROMISE_KIND = "patternFluidExtra";
 
     private static final String STACK_TAG = "stack";
     private static final String RESOURCE_TAG = "resource";
@@ -61,6 +63,9 @@ final class PatternCraftingPersistence {
     private static final String INFO_PATTERN_KIND = "pattern";
     private static final String PATTERN_SLOT_TAG = "patternSlot";
     private static final String INPUT_SLOT_TAG = "inputSlot";
+    private static final String ORDER_REFERENCE_PREFIX = "order";
+    private static final String DELIVERY_REFERENCE_PREFIX = "delivery";
+    private static final String CRAFTING_REFERENCE_PREFIX = "crafting";
     private static final String RESULT_AMOUNT_PER_SET_TAG = "resultAmountPerSet";
     private static final String PROVIDED_TAG = "provided";
     private static final String USE_OD_TAG = "useOd";
@@ -71,6 +76,8 @@ final class PatternCraftingPersistence {
     private static final String IN_PROGRESS_TAG = "inProgress";
     private static final String MACHINE_PROGRESS_TAG = "machineProgress";
     private static final String WATCHED_TAG = "watched";
+    private static final String BYPRODUCT_TAG = "byproduct";
+    private static final String BYPRODUCT_TARGET_PREFIX = "byproductTarget";
 
     private PatternCraftingPersistence() {}
 
@@ -127,6 +134,14 @@ final class PatternCraftingPersistence {
             tag.setInteger(RESULT_AMOUNT_PER_SET_TAG, pattern.getResultAmountPerSet());
             return true;
         }
+        if (promise instanceof PatternFluidByproductPromise extra) {
+            tag.setString(KIND_TAG, PATTERN_FLUID_EXTRA_PROMISE_KIND);
+            writeFluid(tag, extra.getLiquid(), extra.getAmount());
+            writeFluidProvider(tag, PROVIDER_TAG, extra.getSender());
+            tag.setBoolean(PROVIDED_TAG, extra.isProvided());
+            writeByproductTarget(tag, extra.getByproductTarget());
+            return true;
+        }
         if (promise instanceof FluidExtraPromise extra) {
             tag.setString(KIND_TAG, FLUID_EXTRA_PROMISE_KIND);
             writeFluid(tag, extra.getLiquid(), extra.getAmount());
@@ -154,6 +169,14 @@ final class PatternCraftingPersistence {
             writeDictResource(tag, extra.getResource());
             writeItemProvider(tag, PROVIDER_TAG, extra.sender);
             tag.setBoolean(PROVIDED_TAG, extra.isProvided());
+            return true;
+        }
+        if (promise instanceof PatternItemByproductPromise extra) {
+            tag.setString(KIND_TAG, PATTERN_ITEM_EXTRA_PROMISE_KIND);
+            writeStack(tag, extra.getItemType().makeStack(extra.getAmount()));
+            writeItemProvider(tag, PROVIDER_TAG, extra.sender);
+            tag.setBoolean(PROVIDED_TAG, extra.isProvided());
+            writeByproductTarget(tag, extra.getByproductTarget());
             return true;
         }
         if (promise instanceof LogisticsExtraPromise extra) {
@@ -190,6 +213,14 @@ final class PatternCraftingPersistence {
                     tag.getInteger(PATTERN_SLOT_TAG),
                     tag.getInteger(RESULT_AMOUNT_PER_SET_TAG));
         }
+        if (PATTERN_FLUID_EXTRA_PROMISE_KIND.equals(kind)) {
+            return new PatternFluidByproductPromise(
+                    readRequiredFluid(tag),
+                    tag.getInteger(AMOUNT_TAG),
+                    readFluidProvider(tag, PROVIDER_TAG),
+                    tag.getBoolean(PROVIDED_TAG),
+                    PatternByproductTarget.readFromNBT(tag, BYPRODUCT_TARGET_PREFIX));
+        }
         if (FLUID_EXTRA_PROMISE_KIND.equals(kind)) {
             return new FluidExtraPromise(
                     readRequiredFluid(tag),
@@ -212,6 +243,15 @@ final class PatternCraftingPersistence {
                     readItemProvider(tag, PROVIDER_TAG),
                     tag.getInteger(PATTERN_SLOT_TAG),
                     tag.getInteger(RESULT_AMOUNT_PER_SET_TAG));
+        }
+        if (PATTERN_ITEM_EXTRA_PROMISE_KIND.equals(kind)) {
+            ItemIdentifierStack stack = readRequiredStack(tag);
+            return new PatternItemByproductPromise(
+                    stack.getItem(),
+                    stack.getStackSize(),
+                    readItemProvider(tag, PROVIDER_TAG),
+                    tag.getBoolean(PROVIDED_TAG),
+                    PatternByproductTarget.readFromNBT(tag, BYPRODUCT_TARGET_PREFIX));
         }
         if (DICT_EXTRA_PROMISE_KIND.equals(kind)) {
             DictResource resource = readDictResource(tag, null);
@@ -288,6 +328,9 @@ final class PatternCraftingPersistence {
         order.inProgress = tag.getBoolean(IN_PROGRESS_TAG);
         order.machineProgress = tag.getByte(MACHINE_PROGRESS_TAG);
         order.watched = tag.getBoolean(WATCHED_TAG);
+        order.byproduct = tag.getBoolean(BYPRODUCT_TAG);
+        order.byproductTarget = PatternByproductTarget.readFromNBT(tag, BYPRODUCT_TARGET_PREFIX);
+        order.craftingReference = PatternCraftingReference.readFromNBT(tag, CRAFTING_REFERENCE_PREFIX);
         if (ITEM_KIND.equals(kind)) {
             order.itemResource = readDictResource(tag.getCompoundTag(RESOURCE_TAG), null);
             order.itemDestination = readItemRequester(tag, DESTINATION_TAG);
@@ -302,12 +345,41 @@ final class PatternCraftingPersistence {
         throw new RestoreNotReadyException();
     }
 
+    static PatternCraftingReference readOrderCraftingReference(NBTTagCompound tag) {
+        return PatternCraftingReference.readFromNBT(tag, CRAFTING_REFERENCE_PREFIX);
+    }
+
+    static void writeOrderCraftingReference(NBTTagCompound tag, PatternCraftingReference reference) {
+        if (tag != null && reference != null) {
+            reference.writeToNBT(tag, CRAFTING_REFERENCE_PREFIX);
+        }
+    }
+
+    static ItemIdentifierStack readOrderDisplayStack(NBTTagCompound tag) {
+        String kind = tag.getString(KIND_TAG);
+        if (ITEM_KIND.equals(kind)) {
+            return readStack(tag.getCompoundTag(RESOURCE_TAG));
+        }
+        if (FLUID_KIND.equals(kind)) {
+            FluidIdentifier fluid = readFluid(tag);
+            int amount = tag.getInteger(AMOUNT_TAG);
+            return fluid == null || amount <= 0 ? null : new ItemIdentifierStack(fluid.getItemIdentifier(), amount);
+        }
+        return null;
+    }
+
     static void writeTargetInfo(NBTTagCompound parent, IAdditionalTargetInformation info) {
         NBTTagCompound tag = new NBTTagCompound();
         if (info instanceof PatternTargetInformation patternInfo) {
             tag.setString(KIND_TAG, INFO_PATTERN_KIND);
             tag.setInteger(PATTERN_SLOT_TAG, patternInfo.patternSlot());
             tag.setInteger(INPUT_SLOT_TAG, patternInfo.inputSlot());
+            if (patternInfo.orderReference() != null) {
+                patternInfo.orderReference().writeToNBT(tag, ORDER_REFERENCE_PREFIX);
+            }
+            if (patternInfo.deliveryReference() != null) {
+                patternInfo.deliveryReference().writeToNBT(tag, DELIVERY_REFERENCE_PREFIX);
+            }
         }
         if (!tag.hasNoTags()) {
             parent.setTag(INFO_TAG, tag);
@@ -320,7 +392,11 @@ final class PatternCraftingPersistence {
         }
         int inputSlot = tag.hasKey(INPUT_SLOT_TAG) ? tag.getInteger(INPUT_SLOT_TAG)
                 : PatternTargetInformation.NO_INPUT_SLOT;
-        return new PatternTargetInformation(tag.getInteger(PATTERN_SLOT_TAG), inputSlot);
+        return new PatternTargetInformation(
+                tag.getInteger(PATTERN_SLOT_TAG),
+                inputSlot,
+                PatternCraftingReference.readFromNBT(tag, ORDER_REFERENCE_PREFIX),
+                PatternCraftingReference.readFromNBT(tag, DELIVERY_REFERENCE_PREFIX));
     }
 
     static IAdditionalTargetInformation readTargetInfoFromParent(NBTTagCompound parent) {
@@ -331,6 +407,15 @@ final class PatternCraftingPersistence {
         tag.setBoolean(IN_PROGRESS_TAG, order.isInProgress());
         tag.setBoolean(WATCHED_TAG, order.isWatched());
         tag.setByte(MACHINE_PROGRESS_TAG, order.getMachineProgress());
+        if (order instanceof LogisticsOrder logisticsOrder && logisticsOrder.isByproduct()) {
+            tag.setBoolean(BYPRODUCT_TAG, true);
+        }
+        if (order instanceof LogisticsOrder logisticsOrder) {
+            writeByproductTarget(tag, logisticsOrder.getByproductTarget());
+        }
+        if (order instanceof LogisticsOrder logisticsOrder && logisticsOrder.getCraftingReference() != null) {
+            logisticsOrder.getCraftingReference().writeToNBT(tag, CRAFTING_REFERENCE_PREFIX);
+        }
     }
 
     private static void restoreOrderRuntimeState(IOrderInfoProvider order, RestoredOrder state) {
@@ -339,8 +424,17 @@ final class PatternCraftingPersistence {
         }
         logisticsOrder.setInProgress(state.inProgress);
         logisticsOrder.setMachineProgress(state.machineProgress);
+        logisticsOrder.setByproduct(state.byproduct);
+        logisticsOrder.setByproductTarget(state.byproductTarget);
+        logisticsOrder.setCraftingReference(state.craftingReference);
         if (state.watched) {
             logisticsOrder.setWatched();
+        }
+    }
+
+    private static void writeByproductTarget(NBTTagCompound tag, PatternByproductTarget target) {
+        if (target != null && target.isConfigured()) {
+            target.writeToNBT(tag, BYPRODUCT_TARGET_PREFIX);
         }
     }
 
@@ -564,7 +658,14 @@ final class PatternCraftingPersistence {
         private IAdditionalTargetInformation info;
         private boolean inProgress;
         private boolean watched;
+        private boolean byproduct;
+        private PatternByproductTarget byproductTarget;
+        private PatternCraftingReference craftingReference;
         private byte machineProgress;
+
+        PatternCraftingReference craftingReference() {
+            return craftingReference;
+        }
 
         IOrderInfoProvider create(PipeItemsPatternCraftingLogistics pipe, ModulePatternCrafting module) {
             IOrderInfoProvider order;

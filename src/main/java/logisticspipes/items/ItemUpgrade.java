@@ -31,6 +31,7 @@ import logisticspipes.pipes.upgrades.CraftingMonitoringUpgrade;
 import logisticspipes.pipes.upgrades.FluidCraftingUpgrade;
 import logisticspipes.pipes.upgrades.FuzzyUpgrade;
 import logisticspipes.pipes.upgrades.IPipeUpgrade;
+import logisticspipes.pipes.upgrades.InstantSatelliteUpgrade;
 import logisticspipes.pipes.upgrades.LogicControllerUpgrade;
 import logisticspipes.pipes.upgrades.OpaqueUpgrade;
 import logisticspipes.pipes.upgrades.PatternUpgrade;
@@ -85,6 +86,7 @@ public class ItemUpgrade extends LogisticsItem {
     public static final int SUPPLIER_PATTERN = 24;
     public static final int FUZZY_CRAFTING = 25;
     public static final int CRAFTING_CLEANUP = 26;
+    public static final int INSTANT_SATELLITE = 27;
 
     // Power Upgrades
     public static final int POWER_TRANSPORTATION = 30;
@@ -185,6 +187,7 @@ public class ItemUpgrade extends LogisticsItem {
         registerUpgrade(ItemUpgrade.CRAFTING_MONITORING, CraftingMonitoringUpgrade.class, 27);
         registerUpgrade(ItemUpgrade.OPAQUE_UPGRADE, OpaqueUpgrade.class, 28);
         registerUpgrade(ItemUpgrade.CRAFTING_CLEANUP, CraftingCleanupUpgrade.class, 29);
+        registerUpgrade(ItemUpgrade.INSTANT_SATELLITE, InstantSatelliteUpgrade.class, 14);
         if (LPConstants.DEBUG) {
             registerUpgrade(ItemUpgrade.LOGIC_CONTROLLER_UPGRADE, LogicControllerUpgrade.class, 30);
         }

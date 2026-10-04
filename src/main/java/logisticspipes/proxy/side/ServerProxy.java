@@ -29,6 +29,7 @@ import logisticspipes.blocks.powertile.LogisticsIC2PowerProviderTileEntity;
 import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.blocks.powertile.LogisticsRFPowerProviderTileEntity;
 import logisticspipes.blocks.stats.LogisticsStatisticsTileEntity;
+import logisticspipes.crafting.CraftingMonitorTileEntity;
 import logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity;
 import logisticspipes.items.ItemLogisticsPipe;
 import logisticspipes.modules.abstractmodules.LogisticsModule;
@@ -83,6 +84,9 @@ public class ServerProxy implements IProxy {
         GameRegistry.registerTileEntity(
                 PatternLogisticsCraftingTableTileEntity.class,
                 "logisticspipes.crafting.PatternLogisticsCraftingTableTileEntity");
+        GameRegistry.registerTileEntity(
+                CraftingMonitorTileEntity.class,
+                "logisticspipes.crafting.CraftingMonitorTileEntity");
         GameRegistry.registerTileEntity(LogisticsTileGenericPipe.class, LogisticsPipes.logisticsTileGenericPipeMapping);
         GameRegistry.registerTileEntity(
                 LogisticsStatisticsTileEntity.class,

@@ -18,6 +18,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidTankInfo;
 import net.minecraftforge.fluids.IFluidHandler;
 
+import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
 import logisticspipes.pipes.PipeItemsPatternCraftingLogistics;
@@ -25,11 +26,12 @@ import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.routing.IRouter;
 import logisticspipes.utils.FluidIdentifier;
+import logisticspipes.utils.item.ItemIdentifier;
 import logisticspipes.utils.item.ItemIdentifierStack;
 import logisticspipes.utils.tuples.Pair;
 
 public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.PipeFluidSatellite
-        implements IPatternSatellitePipe {
+        implements IPatternSatellitePipe, PatternByproductExtractionTarget {
 
     private static final Set<PipeFluidPatternSatelliteLogistics> ALL_PATTERN_FLUID_SATELLITES = Collections
             .newSetFromMap(new WeakHashMap<>());
@@ -39,7 +41,9 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
     private String satelliteUuid = UUID.randomUUID().toString();
     private String satelliteName = "";
     private final Map<FluidIdentifier, Integer> reservationBaseline = new HashMap<>();
+    private final PatternSatelliteByproductExtractor byproductExtractor = new PatternSatelliteByproductExtractor(this);
     private int reservedOwnerRouter = -1;
+    private PatternCraftingReference reservedReference;
 
     public PipeFluidPatternSatelliteLogistics(Item item) {
         super(item);
@@ -71,6 +75,10 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
             }
         }
         return null;
+    }
+
+    static List<PatternByproductExtractionTarget> getRegisteredByproductExtractionTargets() {
+        return new ArrayList<>(ALL_PATTERN_FLUID_SATELLITES);
     }
 
     public static List<PatternSatelliteInfo> getKnownSatellitesFor(EntityPlayer player) {
@@ -143,6 +151,22 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
     }
 
     @Override
+    public boolean canExtractByproductsFor(IRouter requester) {
+        return byproductExtractor.canExtractFor(requester);
+    }
+
+    @Override
+    public PatternByproductExtractionResult extractItemByproduct(ItemIdentifier item, int amount, int destination,
+            IAdditionalTargetInformation info) {
+        return byproductExtractor.extractItem(item, amount, destination, info);
+    }
+
+    @Override
+    public PatternByproductExtractionResult extractFluidByproduct(FluidIdentifier fluid, int amount, int destination,
+            IAdditionalTargetInformation info) {
+        return byproductExtractor.extractFluid(fluid, amount, destination, info);
+    }
+
     public void setSatelliteName(String satelliteName) {
         this.satelliteName = satelliteName == null ? "" : satelliteName.trim();
         ensureAllSatelliteStatus();
@@ -153,42 +177,49 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
     }
 
     /**
-     * Returns true when this fluid satellite is unlocked or already belongs to the same crafting pipe.
+     * Returns true when this fluid satellite is unlocked or only pre-reserved by the same crafting pipe.
      */
-    public boolean canReserveFor(PipeItemsPatternCraftingLogistics owner) {
+    public boolean canReserveFor(PipeItemsPatternCraftingLogistics owner, PatternCraftingReference reference) {
         int ownerRouter = ownerRouterId(owner);
-        return ownerRouter >= 0 && (reservedOwnerRouter < 0 || reservedOwnerRouter == ownerRouter);
+        return ownerRouter >= 0 && reference != null
+                && (reservedOwnerRouter < 0
+                        || (reservedOwnerRouter == ownerRouter && reference.equals(reservedReference)
+                                && reservationBaseline.isEmpty()));
     }
 
     /**
      * Locks this fluid satellite for a pattern crafting pipe before a complete buffered set is dispatched.
      */
-    public boolean reserveFor(PipeItemsPatternCraftingLogistics owner) {
-        if (!canReserveFor(owner)) {
+    public boolean reserveFor(PipeItemsPatternCraftingLogistics owner, PatternCraftingReference reference) {
+        if (!canReserveFor(owner, reference)) {
             return false;
         }
         reservedOwnerRouter = ownerRouterId(owner);
+        reservedReference = reference;
         return true;
     }
 
     /**
      * Releases the reservation held by the owner pipe.
      */
-    public void releaseReservation(PipeItemsPatternCraftingLogistics owner) {
+    public void releaseReservation(PipeItemsPatternCraftingLogistics owner, PatternCraftingReference reference) {
         int ownerRouter = ownerRouterId(owner);
-        if (ownerRouter >= 0 && reservedOwnerRouter != ownerRouter) {
+        if (ownerRouter >= 0
+                && (reservedOwnerRouter != ownerRouter || !java.util.Objects.equals(reservedReference, reference))) {
             return;
         }
         reservedOwnerRouter = -1;
+        reservedReference = null;
         reservationBaseline.clear();
     }
 
     /**
      * Returns true once all fluid inserted during the current reservation has been consumed.
      */
-    public boolean isReservationConsumed(PipeItemsPatternCraftingLogistics owner) {
+    public boolean isReservationConsumed(PipeItemsPatternCraftingLogistics owner, PatternCraftingReference reference) {
         int ownerRouter = ownerRouterId(owner);
-        if (ownerRouter < 0 || reservedOwnerRouter != ownerRouter) {
+        if (ownerRouter < 0 || reservedOwnerRouter != ownerRouter
+                || !java.util.Objects.equals(reservedReference, reference)) {
             return true;
         }
         for (Map.Entry<FluidIdentifier, Integer> entry : reservationBaseline.entrySet()) {
@@ -207,15 +238,45 @@ public class PipeFluidPatternSatelliteLogistics extends logisticspipes.pipes.Pip
     }
 
     /**
+     * Returns whether the adjacent tank target is ready for a blocking-mode satellite batch.
+     */
+    public boolean isPatternTargetEmpty() {
+        boolean hasTank = false;
+        for (Pair<TileEntity, ForgeDirection> pair : getAdjacentTanks(false)) {
+            if (!(pair.getValue1() instanceof IFluidHandler handler)) {
+                continue;
+            }
+            hasTank = true;
+            FluidTankInfo[] tanks = handler.getTankInfo(pair.getValue2().getOpposite());
+            if (tanks == null) {
+                continue;
+            }
+            for (FluidTankInfo tank : tanks) {
+                if (tank != null && tank.fluid != null && tank.fluid.amount > 0) {
+                    return false;
+                }
+            }
+        }
+        return hasTank;
+    }
+
+    /**
      * Inserts a complete fluid pattern input into adjacent satellite tanks.
      */
     public int insertPatternInput(FluidIdentifier fluid, int amount) {
+        return insertPatternInput(fluid, amount, true);
+    }
+
+    /**
+     * Inserts a complete fluid pattern input and optionally tracks it as a blocking-mode reservation.
+     */
+    public int insertPatternInput(FluidIdentifier fluid, int amount, boolean trackReservation) {
         if (fluid == null || amount <= 0) {
             return 0;
         }
         int before = countAdjacentFluid(fluid);
         int inserted = fillPatternInput(fluid, amount, true);
-        if (inserted > 0) {
+        if (inserted > 0 && trackReservation) {
             reservationBaseline.putIfAbsent(fluid, before);
         }
         return inserted;

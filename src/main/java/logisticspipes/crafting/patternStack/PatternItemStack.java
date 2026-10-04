@@ -42,15 +42,16 @@ public class PatternItemStack implements IPatternStack {
 
     /**
      * Reads a stack written by {@link #writeItem}, or a plain vanilla stack from older saves.
+     * <p>
+     * Patterns saved by the crafting_rework_2 branch store the amount as an int {@code Count} instead of
+     * {@link #AMOUNT_TAG}; {@code getInteger} reads both that and the vanilla byte.
      */
     public static ItemIdentifierStack readItem(NBTTagCompound tag) {
         ItemStack stack = ItemStack.loadItemStackFromNBT(tag);
         if (stack == null) {
             return null;
         }
-        if (tag.hasKey(AMOUNT_TAG)) {
-            stack.stackSize = tag.getInteger(AMOUNT_TAG);
-        }
+        stack.stackSize = tag.hasKey(AMOUNT_TAG) ? tag.getInteger(AMOUNT_TAG) : tag.getInteger("Count");
         return ItemIdentifierStack.getFromStack(stack);
     }
 

@@ -8,6 +8,7 @@ import java.util.UUID;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import logisticspipes.crafting.PatternCraftingReference;
 import logisticspipes.crafting.PatternTargetInformation;
 import logisticspipes.interfaces.routing.IAdditionalTargetInformation;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
@@ -24,6 +25,8 @@ public class ItemRoutingInformation {
     private static final String TARGET_INFO_PATTERN = "pattern";
     private static final String TARGET_PATTERN_SLOT_TAG = "patternSlot";
     private static final String TARGET_INPUT_SLOT_TAG = "inputSlot";
+    private static final String TARGET_ORDER_REFERENCE_PREFIX = "order";
+    private static final String TARGET_DELIVERY_REFERENCE_PREFIX = "delivery";
 
     public static class DelayComparator implements Comparator<ItemRoutingInformation> {
 
@@ -103,7 +106,11 @@ public class ItemRoutingInformation {
         }
         int inputSlot = tag.hasKey(TARGET_INPUT_SLOT_TAG) ? tag.getInteger(TARGET_INPUT_SLOT_TAG)
                 : PatternTargetInformation.NO_INPUT_SLOT;
-        return new PatternTargetInformation(tag.getInteger(TARGET_PATTERN_SLOT_TAG), inputSlot);
+        return new PatternTargetInformation(
+                tag.getInteger(TARGET_PATTERN_SLOT_TAG),
+                inputSlot,
+                PatternCraftingReference.readFromNBT(tag, TARGET_ORDER_REFERENCE_PREFIX),
+                PatternCraftingReference.readFromNBT(tag, TARGET_DELIVERY_REFERENCE_PREFIX));
     }
 
     private NBTTagCompound writeTargetInfo(IAdditionalTargetInformation info) {
@@ -112,6 +119,12 @@ public class ItemRoutingInformation {
             tag.setString(TARGET_INFO_TYPE_TAG, TARGET_INFO_PATTERN);
             tag.setInteger(TARGET_PATTERN_SLOT_TAG, patternInfo.patternSlot());
             tag.setInteger(TARGET_INPUT_SLOT_TAG, patternInfo.inputSlot());
+            if (patternInfo.orderReference() != null) {
+                patternInfo.orderReference().writeToNBT(tag, TARGET_ORDER_REFERENCE_PREFIX);
+            }
+            if (patternInfo.deliveryReference() != null) {
+                patternInfo.deliveryReference().writeToNBT(tag, TARGET_DELIVERY_REFERENCE_PREFIX);
+            }
         }
         return tag;
     }

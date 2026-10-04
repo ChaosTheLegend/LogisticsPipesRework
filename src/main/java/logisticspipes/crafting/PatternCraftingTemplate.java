@@ -12,17 +12,25 @@ import logisticspipes.request.IPromise;
 import logisticspipes.request.resources.IResource;
 import logisticspipes.request.resources.ItemResource;
 import logisticspipes.routing.FluidExtraPromise;
-import logisticspipes.routing.LogisticsExtraPromise;
 import logisticspipes.utils.FluidIdentifierStack;
 import logisticspipes.utils.item.ItemIdentifierStack;
 
 public class PatternCraftingTemplate extends BaseCraftingTemplate {
 
     private final ItemIdentifierStack result;
-    private final List<ItemIdentifierStack> byproducts = new ArrayList<>();
-    private final List<FluidIdentifierStack> fluidByproducts = new ArrayList<>();
+    private final List<ItemByproduct> byproducts = new ArrayList<>();
+    private final List<FluidByproduct> fluidByproducts = new ArrayList<>();
     private final ICraftItems crafter;
     private final int patternSlot;
+    private PatternByproductTarget outputTarget;
+
+    public void setOutputTarget(PatternByproductTarget target) {
+        outputTarget = target;
+    }
+
+    public int getPatternSlot() {
+        return patternSlot;
+    }
 
     public PatternCraftingTemplate(ItemIdentifierStack result, ICraftItems crafter, int priority, int patternSlot) {
         this(result, crafter, priority, patternSlot, ItemPattern.INGREDIENT_SLOTS);
@@ -43,7 +51,13 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
      * will later extract them from the connected inventory and route them to storage or a consumer.
      */
     public void addByproduct(ItemIdentifierStack stack) {
-        byproducts.add(stack);
+        addByproduct(stack, null);
+    }
+
+    public void addByproduct(ItemIdentifierStack stack, PatternByproductTarget target) {
+        if (stack != null && stack.getStackSize() > 0) {
+            byproducts.add(new ItemByproduct(stack.clone(), target));
+        }
     }
 
     /**
@@ -54,21 +68,15 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
      * handler.
      */
     public void addFluidByproduct(FluidIdentifierStack stack) {
+        addFluidByproduct(stack, null);
+    }
+
+    public void addFluidByproduct(FluidIdentifierStack stack, PatternByproductTarget target) {
         if (stack == null || stack.getStackSize() <= 0) {
             return;
         }
-        for (int i = 0; i < fluidByproducts.size(); i++) {
-            FluidIdentifierStack existing = fluidByproducts.get(i);
-            if (existing.getFluidIdentifier().equals(stack.getFluidIdentifier())) {
-                fluidByproducts.set(
-                        i,
-                        new FluidIdentifierStack(
-                                existing.getFluidIdentifier(),
-                                existing.getStackSize() + stack.getStackSize()));
-                return;
-            }
-        }
-        fluidByproducts.add(new FluidIdentifierStack(stack.getFluidIdentifier(), stack.getStackSize()));
+        fluidByproducts.add(
+                new FluidByproduct(new FluidIdentifierStack(stack.getFluidIdentifier(), stack.getStackSize()), target));
     }
 
     /**
@@ -80,22 +88,24 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
     @Override
     public List<IExtraPromise> getByproducts(int workSets) {
         List<IExtraPromise> result = new ArrayList<>();
-        for (ItemIdentifierStack byproduct : byproducts) {
+        for (ItemByproduct byproduct : byproducts) {
             result.add(
-                    new LogisticsExtraPromise(
-                            byproduct.getItem(),
-                            byproduct.getStackSize() * workSets,
+                    new PatternItemByproductPromise(
+                            byproduct.stack.getItem(),
+                            byproduct.stack.getStackSize() * workSets,
                             crafter,
-                            false));
+                            false,
+                            byproduct.target));
         }
         if (crafter instanceof ICraftFluids) {
-            for (FluidIdentifierStack byproduct : fluidByproducts) {
+            for (FluidByproduct byproduct : fluidByproducts) {
                 result.add(
-                        new FluidExtraPromise(
-                                byproduct.getFluidIdentifier(),
-                                byproduct.getStackSize() * workSets,
+                        new PatternFluidByproductPromise(
+                                byproduct.stack.getFluidIdentifier(),
+                                byproduct.stack.getStackSize() * workSets,
                                 (ICraftFluids) crafter,
-                                false));
+                                false,
+                                byproduct.target));
             }
         }
         return result;
@@ -109,12 +119,14 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
      */
     @Override
     public IPromise generatePromise(int nCraftingSetsNeeded) {
-        return new PatternCraftingPromise(
+        PatternCraftingPromise promise = new PatternCraftingPromise(
                 result.getItem(),
                 result.getStackSize() * nCraftingSetsNeeded,
                 crafter,
                 patternSlot,
                 result.getStackSize());
+        promise.setByproductTarget(outputTarget);
+        return promise;
     }
 
     @Override
@@ -135,5 +147,27 @@ public class PatternCraftingTemplate extends BaseCraftingTemplate {
     @Override
     public ItemIdentifierStack getResultStack() {
         return result;
+    }
+
+    private static final class ItemByproduct {
+
+        private final ItemIdentifierStack stack;
+        private final PatternByproductTarget target;
+
+        private ItemByproduct(ItemIdentifierStack stack, PatternByproductTarget target) {
+            this.stack = stack;
+            this.target = target;
+        }
+    }
+
+    private static final class FluidByproduct {
+
+        private final FluidIdentifierStack stack;
+        private final PatternByproductTarget target;
+
+        private FluidByproduct(FluidIdentifierStack stack, PatternByproductTarget target) {
+            this.stack = stack;
+            this.target = target;
+        }
     }
 }

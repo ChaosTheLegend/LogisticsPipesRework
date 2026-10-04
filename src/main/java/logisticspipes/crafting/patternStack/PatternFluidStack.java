@@ -8,6 +8,8 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidContainerItem;
 
 import codechicken.nei.recipe.StackInfo;
+import cpw.mods.fml.common.Loader;
+import gregtech.api.util.GTUtility;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.item.ItemIdentifierStack;
@@ -87,6 +89,10 @@ public class PatternFluidStack implements IPatternStack {
 
     @Override
     public ItemStack makeDisplayItemStack() {
+        // Use the same display item as NEI, including pattern-item output previews.
+        if (Loader.isModLoaded("gregtech")) {
+            return GTUtility.getFluidDisplayStack(makeFluidStack(), true);
+        }
         return makeDisplayStack().makeNormalStack();
     }
 

@@ -7,10 +7,22 @@ import logisticspipes.utils.FluidIdentifier;
 import lombok.Getter;
 
 @Getter
-public class PatternFluidCraftingPromise extends FluidLogisticsPromise {
+public class PatternFluidCraftingPromise extends FluidLogisticsPromise implements PatternByproductPromise {
 
     private final int patternSlot;
     private final int resultAmountPerSet;
+    private PatternByproductTarget byproductTarget;
+
+    public void setByproductTarget(PatternByproductTarget target) {
+        byproductTarget = target;
+    }
+
+    /** Keeps excess output tied to the same satellite as the requested part of the recipe result. */
+    @Override
+    public PatternFluidByproductPromise split(int more) {
+        setAmount(getAmount() - more);
+        return new PatternFluidByproductPromise(getLiquid(), more, getSender(), false, byproductTarget);
+    }
 
     public PatternFluidCraftingPromise(FluidIdentifier fluid, int amount, IProvideFluids sender, int patternSlot,
             int resultAmountPerSet) {
@@ -24,7 +36,7 @@ public class PatternFluidCraftingPromise extends FluidLogisticsPromise {
      */
     @Override
     public PatternFluidCraftingPromise copy() {
-        return new PatternFluidCraftingPromise(getLiquid(), getAmount(), getSender(), patternSlot, resultAmountPerSet);
+        return copyWithAmount(getAmount());
     }
 
     /**
@@ -35,6 +47,13 @@ public class PatternFluidCraftingPromise extends FluidLogisticsPromise {
      */
     @Override
     public PatternFluidCraftingPromise copyWithAmount(int amount) {
-        return new PatternFluidCraftingPromise(getLiquid(), amount, getSender(), patternSlot, resultAmountPerSet);
+        PatternFluidCraftingPromise copy = new PatternFluidCraftingPromise(
+                getLiquid(),
+                amount,
+                getSender(),
+                patternSlot,
+                resultAmountPerSet);
+        copy.setByproductTarget(byproductTarget);
+        return copy;
     }
 }

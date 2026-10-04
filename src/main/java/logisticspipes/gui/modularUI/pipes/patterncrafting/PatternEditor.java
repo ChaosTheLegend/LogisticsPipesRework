@@ -179,18 +179,11 @@ public class PatternEditor {
         ModularSlot slot = new ModularSlot(edited, inputSlot).ignoreMaxStackSize(true);
         panel.child(
                 new PatternIngredientSlot().progressText(() -> inputProgress.apply(inputSlot))
+                        .satelliteClick(() -> openSatelliteSelector(inputSlot))
+                        .badgeDraw(() -> drawSatelliteBadge(inputSlot))
                         .extraTooltip(tooltip -> addInputTooltip(tooltip, inputSlot))
                         .syncHandler(new PatternIngredientSlotSH(slot)).pos(x, y)
                         .setEnabledIf(w -> visible.getAsBoolean()));
-        panel.child(
-                new ButtonWidget<>().pos(x + 1, y + 1).size(7, 7).background(IDrawable.EMPTY)
-                        .hoverBackground(IDrawable.EMPTY).overlay(satelliteBadge(inputSlot))
-                        .setEnabledIf(w -> visible.getAsBoolean() && hasEntry(inputSlot))
-                        .onMousePressed(mouseButton -> {
-                            if (mouseButton != 0) return false;
-                            openSatelliteSelector(inputSlot);
-                            return true;
-                        }).tooltipAutoUpdate(true).tooltipBuilder(tooltip -> addSatelliteTooltip(tooltip, inputSlot)));
     }
 
     private void addOutputSlot(ModularPanel panel, IItemHandlerModifiable edited, int patternSlot, int outputIndex,
@@ -198,8 +191,21 @@ public class PatternEditor {
         ModularSlot slot = new ModularSlot(edited, patternSlot).ignoreMaxStackSize(true);
         panel.child(
                 new PatternIngredientSlot().progressText(() -> outputProgress.apply(outputIndex))
-                        .extraTooltip(tooltip -> addEntryHint(tooltip, patternSlot))
-                        .syncHandler(new PatternIngredientSlotSH(slot)).pos(x, y)
+                        .satelliteClick(() -> openSatelliteSelector(patternSlot))
+                        .badgeDraw(() -> drawSatelliteBadge(patternSlot))
+                        .mainOutput(
+                                () -> actions.selectMainOutput(outputIndex),
+                                () -> state.getPattern().getMainOutputSlot() == outputIndex)
+                        .extraTooltip(tooltip -> {
+                            tooltip.addLine(
+                                    IKey.lang(
+                                            LANG + (state.getPattern().getMainOutputSlot() == outputIndex
+                                                    ? "output.main"
+                                                    : "output.byproduct")));
+                            tooltip.addLine(IKey.lang(LANG + "output.select").style(EnumChatFormatting.DARK_GRAY));
+                            addSatelliteTooltip(tooltip, patternSlot);
+                            addEntryHint(tooltip, patternSlot);
+                        }).syncHandler(new PatternIngredientSlotSH(slot)).pos(x, y)
                         .setEnabledIf(w -> visible.getAsBoolean()));
     }
 
@@ -288,7 +294,7 @@ public class PatternEditor {
         if (buffered != null) {
             tooltip.addLine(IKey.lang(LANG + "buffered", buffered).style(EnumChatFormatting.AQUA));
         }
-        addSatelliteLine(tooltip, inputSlot);
+        addSatelliteTooltip(tooltip, inputSlot);
         addEntryHint(tooltip, inputSlot);
     }
 
@@ -302,21 +308,21 @@ public class PatternEditor {
 
     // region satellites
 
-    private IDrawable satelliteBadge(int inputSlot) {
-        return (context, x, y, width, height, widgetTheme) -> {
-            boolean fluid = isFluidEntry(inputSlot);
-            boolean assigned = isSatelliteAssigned(inputSlot, fluid);
-            int fill = !assigned ? 0xff707070 : fluid ? 0xff00a8cc : 0xff2b6ee8;
-            GuiDraw.drawRect(x, y, width, height, 0xff1a1a1a);
-            GuiDraw.drawRect(x + 1, y + 1, width - 2, height - 2, fill);
-            if (assigned) {
-                GuiDraw.drawRect(x + 2, y + 2, width - 4, height - 4, 0xffffffff);
-                GuiDraw.drawRect(x + 3, y + 3, width - 6, height - 6, fill);
-            } else {
-                GuiDraw.drawRect(x + 3, y + 2, 1, height - 4, 0xffffffff);
-                GuiDraw.drawRect(x + 2, y + 3, width - 4, 1, 0xffffffff);
-            }
-        };
+    private void drawSatelliteBadge(int inputSlot) {
+        if (!hasEntry(inputSlot)) return;
+        int x = 1, y = 1, width = 7, height = 7;
+        boolean fluid = isFluidEntry(inputSlot);
+        boolean assigned = isSatelliteAssigned(inputSlot, fluid);
+        int fill = !assigned ? 0xff707070 : fluid ? 0xff00a8cc : 0xff2b6ee8;
+        GuiDraw.drawRect(x, y, width, height, 0xff1a1a1a);
+        GuiDraw.drawRect(x + 1, y + 1, width - 2, height - 2, fill);
+        if (assigned) {
+            GuiDraw.drawRect(x + 2, y + 2, width - 4, height - 4, 0xffffffff);
+            GuiDraw.drawRect(x + 3, y + 3, width - 6, height - 6, fill);
+        } else {
+            GuiDraw.drawRect(x + 3, y + 2, 1, height - 4, 0xffffffff);
+            GuiDraw.drawRect(x + 2, y + 3, width - 4, 1, 0xffffffff);
+        }
     }
 
     private boolean isSatelliteAssigned(int inputSlot, boolean fluid) {
@@ -325,39 +331,43 @@ public class PatternEditor {
 
     private int getSatelliteId(int inputSlot, boolean fluid) {
         AbstractPattern pattern = state.getPattern();
+        if (inputSlot >= pattern.getResultSlotStart()) {
+            int outputSlot = inputSlot - pattern.getResultSlotStart();
+            return fluid ? pattern.getFluidByproductSatelliteIdForOutputSlot(outputSlot)
+                    : pattern.getByproductSatelliteIdForOutputSlot(outputSlot);
+        }
         return fluid ? pattern.getFluidSatelliteIdForInputSlot(inputSlot)
                 : pattern.getSatelliteIdForInputSlot(inputSlot);
     }
 
     private String getSatelliteUuid(int inputSlot, boolean fluid) {
         AbstractPattern pattern = state.getPattern();
+        if (inputSlot >= pattern.getResultSlotStart()) {
+            int outputSlot = inputSlot - pattern.getResultSlotStart();
+            return fluid ? pattern.getFluidByproductSatelliteUuidForOutputSlot(outputSlot)
+                    : pattern.getByproductSatelliteUuidForOutputSlot(outputSlot);
+        }
         return fluid ? pattern.getFluidSatelliteUuidForInputSlot(inputSlot)
                 : pattern.getSatelliteUuidForInputSlot(inputSlot);
     }
 
-    private void addSatelliteLine(RichTooltip tooltip, int inputSlot) {
-        boolean fluid = isFluidEntry(inputSlot);
-        if (!isSatelliteAssigned(inputSlot, fluid)) {
-            tooltip.addLine(IKey.lang(LANG + "satellite.local").style(EnumChatFormatting.GRAY));
-            return;
-        }
-        tooltip.addLine(
-                IKey.lang(LANG + "satellite.assigned", satelliteName(inputSlot, fluid))
-                        .style(fluid ? EnumChatFormatting.DARK_AQUA : EnumChatFormatting.BLUE));
-    }
-
     private void addSatelliteTooltip(RichTooltip tooltip, int inputSlot) {
         boolean fluid = isFluidEntry(inputSlot);
+        boolean output = inputSlot >= state.getPattern().getResultSlotStart();
         if (!isSatelliteAssigned(inputSlot, fluid)) {
-            tooltip.addLine(IKey.lang(LANG + "satellite.local"));
+            tooltip.addLine(IKey.lang(LANG + (output ? "byproduct.local" : "satellite.local")));
         } else {
-            tooltip.addLine(IKey.lang(LANG + "satellite.assigned", satelliteName(inputSlot, fluid)));
+            tooltip.addLine(
+                    IKey.lang(
+                            LANG + (output ? "byproduct.assigned" : "satellite.assigned"),
+                            satelliteName(inputSlot, fluid)));
             PatternSatelliteInfo satellite = actions
                     .findSatellite(getSatelliteId(inputSlot, fluid), getSatelliteUuid(inputSlot, fluid), fluid);
             if (satellite != null) {
                 tooltip.addLine(IKey.str(describeLocation(satellite)).style(EnumChatFormatting.GRAY));
             }
         }
+        if (output) tooltip.addLine(IKey.lang(LANG + "byproduct.upgrade").style(EnumChatFormatting.GRAY));
         tooltip.addLine(IKey.lang(LANG + "satellite.click").style(EnumChatFormatting.DARK_GRAY));
     }
 
@@ -392,11 +402,14 @@ public class PatternEditor {
     private ModularPanel buildSatelliteSelector(ModularPanel parent, EntityPlayer player) {
         int inputSlot = selectorInputSlot;
         boolean fluid = selectorFluid;
+        boolean output = inputSlot >= state.getPattern().getResultSlotStart();
+        int displaySlot = output ? inputSlot - state.getPattern().getResultSlotStart() : inputSlot;
         ModularPanel panel = new ModularPanel("pattern_satellite_selector").size(184, 178)
                 .background(ModularUIHelper.BACKGROUND_TEXTURE);
         panel.child(
-                IKey.lang(LANG + (fluid ? "satellite.title.fluid" : "satellite.title.item"), inputSlot + 1).asWidget()
-                        .pos(8, 7).color(TEXT_COLOR));
+                IKey.lang(
+                        LANG + (output ? "byproduct.title." : "satellite.title.") + (fluid ? "fluid" : "item"),
+                        displaySlot + 1).asWidget().pos(8, 7).color(TEXT_COLOR));
         panel.child(ButtonWidget.panelCloseButton());
         StringValue search = new StringValue("");
         panel.child(
@@ -425,7 +438,9 @@ public class PatternEditor {
                 satelliteRow(
                         panel,
                         search,
-                        StatCollector.translateToLocal(LANG + "satellite.local.row"),
+                        StatCollector.translateToLocal(
+                                LANG + (inputSlot >= state.getPattern().getResultSlotStart() ? "byproduct.local.row"
+                                        : "satellite.local.row")),
                         "local none",
                         currentId <= 0 && currentUuid.isEmpty(),
                         inputSlot,
